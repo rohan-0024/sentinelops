@@ -9,7 +9,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 1 App + tests + Dockerfile + registry | **verified on laptop** | 18 tests, 98.9 % coverage, ruff, checkov Dockerfile 63/63 | done: `make image-test` → SMOKE OK |
 | 2 Terraform | **verified on laptop** (`make verify` incl. tf-check, `make tf-local`) | checkov 203 passed / 0 failed / 28 justified skips; finops handler 8 tests (moto); shellcheck | `make tools && make tf-check && make tf-local`; AWS: `make aws-plan` |
 | 3 Ansible | **verified on laptop** (`make ansible-test`: converge, idempotence 0 changed, verify 11/11) | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
-| 4 Jenkins + SonarQube + Trivy | done | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
+| 4 Jenkins + SonarQube + Trivy | **verified on laptop** (main build green: stages 1-7, 9, 10, 13; 8/11/12 skipped as designed; quality gate OK, coverage 95.1 %) | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | pending | | |
 | 6 Monitoring | pending | | |
 | 7 Unique features 1–6 | pending | | |
@@ -80,3 +80,10 @@ yamllint, ansible-lint, moto) are verified here.
   *skipped* until Phases 5 and 7 add their scripts.
 - Groovy is syntax-checked here with npm-groovy-lint. Declarative-pipeline
   semantics can only be validated by a running Jenkins (owner's laptop).
+
+### Phase 4 fixes found during laptop verification
+1. gitleaks failed because Jenkins inherited root's `HOME` after `setpriv`; fixed in
+   the entrypoint. It also flagged `curl -u user:pass` in the bootstrap script, so
+   credentials now go to curl via stdin (reviewed fingerprint in `.gitleaksignore`).
+2. A SonarQube *global analysis* token cannot read measures (403). Bootstrap now
+   creates a least-privilege `jenkins-ci` user (scan + provisioning) with a user token.
