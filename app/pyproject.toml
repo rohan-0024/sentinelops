@@ -1,0 +1,24 @@
+[project]
+name = "sentinel-app"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --cov=sentinel_app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80"
+
+[tool.coverage.run]
+branch = true
+source = ["sentinel_app"]
+omit = ["sentinel_app/server.py"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ANN001"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "ANN001"]

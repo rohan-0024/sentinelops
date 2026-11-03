@@ -1,0 +1,6 @@
+# BuildKit picks this file up automatically for docker/Dockerfile
+# (context is ./app). Allow-list: only what the image needs.
+*
+!requirements.txt
+!sentinel_app/
+sentinel_app/**/__pycache__
