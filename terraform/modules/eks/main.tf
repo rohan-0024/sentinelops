@@ -53,9 +53,9 @@ resource "aws_launch_template" "nodes" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size           = var.node_disk_gb
-      volume_type           = "gp3"
-      encrypted             = true
+      volume_size = var.node_disk_gb
+      volume_type = "gp3"
+      encrypted   = true
       # AWS-managed EBS key on purpose: a CMK would need a key-policy grant for the
       # AutoScaling service-linked role, which may not exist yet in a fresh account.
       delete_on_termination = true

@@ -80,12 +80,12 @@ module "iam" {
 }
 
 locals {
-  lab_role_arn          = var.lab_mode ? data.aws_iam_role.lab[0].arn : null
-  cluster_role_arn      = var.lab_mode ? local.lab_role_arn : module.iam[0].eks_cluster_role_arn
-  node_role_arn         = var.lab_mode ? local.lab_role_arn : module.iam[0].eks_node_role_arn
-  finops_role_arn       = var.lab_mode ? local.lab_role_arn : module.iam[0].finops_lambda_role_arn
-  jenkins_profile_name  = var.lab_mode ? "LabInstanceProfile" : module.iam[0].jenkins_instance_profile_name
-  jenkins_access_entry  = var.lab_mode ? null : module.iam[0].jenkins_role_arn
+  lab_role_arn         = var.lab_mode ? data.aws_iam_role.lab[0].arn : null
+  cluster_role_arn     = var.lab_mode ? local.lab_role_arn : module.iam[0].eks_cluster_role_arn
+  node_role_arn        = var.lab_mode ? local.lab_role_arn : module.iam[0].eks_node_role_arn
+  finops_role_arn      = var.lab_mode ? local.lab_role_arn : module.iam[0].finops_lambda_role_arn
+  jenkins_profile_name = var.lab_mode ? "LabInstanceProfile" : module.iam[0].jenkins_instance_profile_name
+  jenkins_access_entry = var.lab_mode ? null : module.iam[0].jenkins_role_arn
 }
 
 # ---------------- Network, registry, cluster ----------------

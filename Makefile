@@ -10,7 +10,7 @@ export PATH := $(ROOT)/.bin:$(ROOT)/.venv/bin:$(PATH)
 
 MODE      ?= local
 GIT_SHA   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
-APP_VERSION ?= $(shell python3 -c "import re;print(re.search(r'\"(.+)\"',open('app/sentinel_app/__init__.py').read()).group(1))")
+APP_VERSION ?= $(shell sed -n 's/^__version__ = "\(.*\)"/\1/p' app/sentinel_app/__init__.py)
 IMAGE_LOCAL := localhost:5001/sentinelops-app:$(GIT_SHA)
 PY        := $(ROOT)/.venv/bin/python
 REPORTS   := $(ROOT)/reports
@@ -46,7 +46,7 @@ run: venv ## Run the app locally on :8000
 .PHONY: build
 build: ## Build the app image (BuildKit) and tag for the local registry
 	DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile \
-	  --build-arg APP_VERSION=$(APP_VERSION) --build-arg GIT_SHA=$(GIT_SHA) \
+	  --build-arg APP_VERSION="$(APP_VERSION)" --build-arg GIT_SHA="$(GIT_SHA)" \
 	  -t sentinelops-app:$(GIT_SHA) -t $(IMAGE_LOCAL) app/
 
 .PHONY: image-test
@@ -62,9 +62,11 @@ push-local: build registry ## Push the image to the local registry
 	docker push $(IMAGE_LOCAL)
 
 ##@ Terraform
-.PHONY: tf-fmt tf-validate tf-lint tf-check localstack tf-local aws-bootstrap-plan aws-bootstrap aws-plan aws-apply aws-destroy
+.PHONY: tf-fmt tf-fmt-fix tf-validate tf-lint tf-check localstack tf-local aws-bootstrap-plan aws-bootstrap aws-plan aws-apply aws-destroy
 tf-fmt: ## terraform fmt -check (recursive)
 	@bash scripts/terraform.sh fmt
+tf-fmt-fix: ## Rewrite Terraform files to canonical format
+	terraform -chdir=terraform fmt -recursive
 tf-validate: ## terraform validate every root and module (no backend, no AWS creds)
 	@bash scripts/terraform.sh validate
 tf-lint: ## tflint every root and module
