@@ -1,0 +1,4 @@
+# Python tooling inside the Jenkins image (/opt/ci-venv). Pinned.
+checkov==3.3.30
+pyyaml==6.0.2
+requests==2.32.3

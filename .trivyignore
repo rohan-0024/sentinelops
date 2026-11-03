@@ -1,0 +1,3 @@
+# Accepted vulnerabilities (CVE id + reason + review date). Keep this list short.
+# Example:
+# CVE-2099-00000  # no fix upstream; not reachable from the app; review 2026-12-01

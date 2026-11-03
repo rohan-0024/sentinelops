@@ -1,0 +1,305 @@
+// SentinelOps secure CI/CD pipeline (declarative).
+// GitHub -> gitleaks -> tests -> SonarQube gate -> IaC scan -> Docker build -> Trivy gate
+// -> SBOM -> Deployment Risk Score -> push -> Cosign sign/attest -> canary deploy
+// -> smoke + chaos -> metrics + notify.
+// Mode (local | aws) comes from the controller env SENTINELOPS_MODE.
+@Library('sentinel-lib') _
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+        timeout(time: 45, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        MODE = "${env.SENTINELOPS_MODE ?: 'local'}"
+        APP = 'sentinelops-app'
+        REPORTS = 'reports'
+        TRIVY_CACHE_DIR = '/var/cache/trivy'
+        DOCKER_BUILDKIT = '1'
+    }
+
+    stages {
+        stage('1. Checkout & Secret Scan') {
+            steps {
+                markStage()
+                script {
+                    env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
+                    env.COMMIT_TS = sh(returnStdout: true, script: 'git log -1 --format=%ct').trim()
+                    env.PIPELINE_START_TS = sh(returnStdout: true, script: 'date +%s').trim()
+                    String slug = (env.BRANCH_NAME ?: 'main').replaceAll('[^A-Za-z0-9]', '-')
+                    env.SONAR_PROJECT = env.BRANCH_NAME == 'main' ? env.APP : "${env.APP}-${slug}"
+                    env.LOCAL_IMAGE = "${env.APP}:${env.GIT_SHA}"
+                    if (env.MODE == 'aws') {
+                        env.PUSH_REPO = env.ECR_REPOSITORY_URL
+                        env.DEPLOY_REPO = env.ECR_REPOSITORY_URL
+                        env.COSIGN_FLAGS = ''
+                    } else {
+                        env.PUSH_REPO = 'localhost:5001/sentinelops-app'
+                        env.DEPLOY_REPO = 'kind-registry:5000/sentinelops-app'
+                        env.COSIGN_FLAGS = '--allow-insecure-registry --allow-http-registry'
+                    }
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.GIT_SHA}"
+                }
+                sh '''
+                    mkdir -p "$REPORTS"
+                    gitleaks git --redact --no-banner --exit-code 1 \
+                      --report-format json --report-path "$REPORTS/gitleaks.json" .
+                '''
+            }
+        }
+
+        stage('2. Unit Tests & Coverage') {
+            steps {
+                markStage()
+                sh '''
+                    python3 -m venv .ci-venv
+                    .ci-venv/bin/pip install -q --disable-pip-version-check -r app/requirements-dev.txt
+                    cd app && ../.ci-venv/bin/python -m pytest --junitxml="../$REPORTS/junit-app.xml"
+                    cp coverage.xml "../$REPORTS/coverage.xml"
+                '''
+            }
+            post {
+                always {
+                    junit(testResults: 'reports/junit-app.xml', allowEmptyResults: true)
+                }
+            }
+        }
+
+        stage('3. SonarQube Analysis & Quality Gate') {
+            steps {
+                markStage()
+                withSonarQubeEnv('sonarqube') {
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.projectKey="$SONAR_PROJECT" \
+                          -Dsonar.projectName="SentinelOps ($BRANCH_NAME)" \
+                          -Dsonar.projectVersion="$GIT_SHA"
+                    '''
+                }
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate(abortPipeline: false)
+                        env.SONAR_QG = qg.status
+                        if (qg.status != 'OK') {
+                            error("SonarQube quality gate: ${qg.status}")
+                        }
+                    }
+                }
+                withSonarQubeEnv('sonarqube') {
+                    sh '''
+                        set +x
+                        KEYS=bugs,vulnerabilities,code_smells,coverage,security_hotspots
+                        KEYS="$KEYS,duplicated_lines_density,security_rating,reliability_rating"
+                        curl -fsS -u "$SONAR_AUTH_TOKEN:" -o "$REPORTS/sonar-measures.json" \
+                          "$SONAR_HOST_URL/api/measures/component?component=$SONAR_PROJECT&metricKeys=$KEYS"
+                    '''
+                }
+            }
+        }
+
+        stage('4. IaC Scan (checkov)') {
+            steps {
+                markStage()
+                script {
+                    String dirs = '-d terraform -d docker'
+                    if (fileExists('k8s')) {
+                        dirs += ' -d k8s'
+                    }
+                    // Soft-fail: findings are weighted by the Deployment Risk Score instead of hard-blocking.
+                    sh """
+                        checkov ${dirs} --framework terraform,dockerfile,kubernetes,helm \
+                          --skip-download --quiet --compact --soft-fail \
+                          -o cli -o json -o junitxml --output-file-path console,${env.REPORTS},${env.REPORTS}
+                    """
+                }
+            }
+            post {
+                always {
+                    junit(testResults: 'reports/results_junitxml.xml', allowEmptyResults: true)
+                }
+            }
+        }
+
+        stage('5. Docker Build') {
+            steps {
+                markStage()
+                sh '''
+                    APP_VERSION="$(sed -n 's/^__version__ = "\\(.*\\)"/\\1/p' app/sentinel_app/__init__.py)"
+                    docker build -f docker/Dockerfile \
+                      --build-arg APP_VERSION="$APP_VERSION" --build-arg GIT_SHA="$GIT_SHA" \
+                      -t "$LOCAL_IMAGE" app/
+                    docker image inspect "$LOCAL_IMAGE" --format 'image size: {{.Size}} bytes, user: {{.Config.User}}'
+                '''
+            }
+        }
+
+        stage('6. Trivy Image & Filesystem Scan') {
+            steps {
+                markStage()
+                sh '''
+                    IGNORE=""; [ -f .trivyignore ] && IGNORE="--ignorefile .trivyignore"
+                    trivy image --cache-dir "$TRIVY_CACHE_DIR" $IGNORE --scanners vuln \
+                      --format json --output "$REPORTS/trivy-image.json" "$LOCAL_IMAGE"
+                    trivy convert --format table "$REPORTS/trivy-image.json" | tail -n 40
+                    trivy convert --format cosign-vuln --output "$REPORTS/trivy-image.cosign-vuln.json" "$REPORTS/trivy-image.json"
+                    trivy fs --cache-dir "$TRIVY_CACHE_DIR" $IGNORE --scanners vuln,secret \
+                      --format json --output "$REPORTS/trivy-fs.json" app/
+                '''
+                sentinelTrivyGate(reports: ['reports/trivy-image.json', 'reports/trivy-fs.json'])
+            }
+        }
+
+        stage('7. SBOM (Syft, CycloneDX)') {
+            steps {
+                markStage()
+                sh '''
+                    syft "docker:$LOCAL_IMAGE" \
+                      -o cyclonedx-json="$REPORTS/sbom.cdx.json" -o spdx-json="$REPORTS/sbom.spdx.json"
+                    jq '.components | length' "$REPORTS/sbom.cdx.json" | xargs -I{} echo "SBOM components: {}"
+                '''
+            }
+        }
+
+        stage('8. Deployment Risk Score') {
+            when { expression { fileExists('tools/drs/__main__.py') } }
+            steps {
+                markStage()
+                sh 'python3 -m tools.drs --reports "$REPORTS" --config policy/risk.yaml --out "$REPORTS"'
+                script {
+                    def drs = readJSON(file: 'reports/drs.json')
+                    env.DRS_SCORE = drs.score.toString()
+                    env.DRS_DECISION = drs.decision
+                    echo "Deployment Risk Score: ${drs.score} -> ${drs.decision}"
+                    if (drs.decision == 'block') {
+                        error("Deployment blocked by DRS (${drs.score} > threshold)")
+                    }
+                }
+            }
+        }
+
+        stage('9. Push Image') {
+            steps {
+                markStage()
+                script {
+                    if (env.MODE == 'aws') {
+                        sh '''
+                            REGISTRY="${PUSH_REPO%%/*}"
+                            aws ecr get-login-password --region "$AWS_REGION" \
+                              | docker login --username AWS --password-stdin "$REGISTRY"
+                            if aws ecr describe-images --region "$AWS_REGION" --repository-name "${PUSH_REPO#*/}" \
+                                 --image-ids imageTag="$GIT_SHA" >/dev/null 2>&1; then
+                              echo "tag $GIT_SHA already in ECR (immutable tags) - skipping push"
+                            else
+                              docker tag "$LOCAL_IMAGE" "$PUSH_REPO:$GIT_SHA"
+                              docker push "$PUSH_REPO:$GIT_SHA"
+                            fi
+                        '''
+                    } else {
+                        sh '''
+                            docker tag "$LOCAL_IMAGE" "$PUSH_REPO:$GIT_SHA"
+                            docker push "$PUSH_REPO:$GIT_SHA"
+                        '''
+                    }
+                    String digest = sh(returnStdout: true, script: '''
+                        docker image inspect "$PUSH_REPO:$GIT_SHA" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+                          | grep "^$PUSH_REPO@" | head -n1 | cut -d@ -f2
+                    ''').trim()
+                    if (!digest) {
+                        error('Could not determine the pushed image digest')
+                    }
+                    env.IMAGE_DIGEST = digest
+                    env.DEPLOY_IMAGE = "${env.DEPLOY_REPO}@${digest}"
+                    echo "Deploy reference (by digest): ${env.DEPLOY_IMAGE}"
+                }
+            }
+        }
+
+        stage('10. Sign & Attest (Cosign)') {
+            steps {
+                markStage()
+                withCredentials([
+                    string(credentialsId: 'cosign-key-b64', variable: 'COSIGN_KEY_B64'),
+                    string(credentialsId: 'cosign-password', variable: 'COSIGN_PASSWORD'),
+                ]) {
+                    script {
+                        if (env.COSIGN_KEY_B64 == 'unset') {
+                            unstable('Cosign key not configured (run scripts/cosign-keygen.sh); image NOT signed - Kyverno will reject it')
+                            return
+                        }
+                        sh '''
+                            set +x
+                            COSIGN_PRIVATE_KEY="$(printf '%s' "$COSIGN_KEY_B64" | base64 -d)"
+                            export COSIGN_PRIVATE_KEY COSIGN_PASSWORD
+                            # --tlog-upload=false: no public Rekor entry for a private lab registry
+                            cosign sign --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false $COSIGN_FLAGS "$DEPLOY_IMAGE"
+                            cosign attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false $COSIGN_FLAGS \
+                              --type cyclonedx --predicate "$REPORTS/sbom.cdx.json" "$DEPLOY_IMAGE"
+                            cosign attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false $COSIGN_FLAGS \
+                              --type vuln --predicate "$REPORTS/trivy-image.cosign-vuln.json" "$DEPLOY_IMAGE"
+                            echo "signed + attested (SBOM, vulnerability scan): $DEPLOY_IMAGE"
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('11. Deploy (Helm canary)') {
+            when { expression { fileExists('scripts/deploy.sh') } }
+            steps {
+                markStage()
+                sh 'bash scripts/deploy.sh "$DEPLOY_IMAGE"'
+            }
+        }
+
+        stage('12. Smoke & Chaos Test') {
+            when { expression { fileExists('scripts/post-deploy-tests.sh') } }
+            steps {
+                markStage()
+                sh 'bash scripts/post-deploy-tests.sh'
+            }
+        }
+
+        stage('13. Publish Metrics & Notify') {
+            steps {
+                markStage()
+                script {
+                    env.DEPLOYED = (env.DEPLOY_IMAGE && fileExists('scripts/deploy.sh')) ? '1' : '0'
+                    echo "Pipeline complete for ${env.GIT_SHA} (deployed=${env.DEPLOYED})"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sentinelPipelineMetrics()
+            archiveArtifacts(artifacts: 'reports/**', allowEmptyArchive: true, fingerprint: true)
+        }
+        success {
+            sentinelNotify(status: 'SUCCESS')
+        }
+        unstable {
+            sentinelNotify(status: 'UNSTABLE')
+        }
+        failure {
+            script {
+                if (fileExists('tools/explain/__main__.py')) {
+                    withCredentials([string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_API_KEY')]) {
+                        sh(returnStatus: true, script: '''
+                            [ "$ANTHROPIC_API_KEY" = "unset" ] && unset ANTHROPIC_API_KEY
+                            python3 -m tools.explain --build-url "$BUILD_URL" --stage "$CURRENT_STAGE" --out "$REPORTS"
+                        ''')
+                    }
+                    archiveArtifacts(artifacts: 'reports/explain.*', allowEmptyArchive: true)
+                }
+            }
+            sentinelNotify(status: 'FAILURE')
+        }
+    }
+}

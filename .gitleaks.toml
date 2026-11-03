@@ -1,0 +1,13 @@
+# gitleaks config: default rules + allow-list for documented placeholders.
+title = "sentinelops"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and LocalStack dummy credentials (not secrets)"
+paths = [
+  '''\.env\.example$''',
+  '''terraform/envs/local/main\.tf$''',
+  '''ansible/inventory/aws\.ini\.example$''',
+]

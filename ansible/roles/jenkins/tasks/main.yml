@@ -5,21 +5,29 @@
     fail_msg: "Set JENKINS_ADMIN_PASSWORD (>= 8 chars) in the environment before running the playbook."
   no_log: true
 
-- name: Create Jenkins build directory
+- name: Create Jenkins build directories (same layout as the repo)
   ansible.builtin.file:
-    path: "{{ jenkins_dir }}/image"
+    path: "{{ jenkins_dir }}/build/{{ item }}"
     state: directory
     owner: root
     group: root
     mode: "0750"
+  loop: [scripts, jenkins/image]
 
-- name: Copy the Jenkins image build context
+- name: Copy the Jenkins image build context (versions, installer, image dir)
   ansible.builtin.copy:
-    src: "{{ jenkins_build_context }}/"
-    dest: "{{ jenkins_dir }}/image/"
+    src: "{{ jenkins_repo_root }}/{{ item.src }}"
+    dest: "{{ jenkins_dir }}/build/{{ item.dest }}"
     owner: root
     group: root
     mode: preserve
+  loop:
+    - src: versions.env
+      dest: versions.env
+    - src: scripts/install-tools.sh
+      dest: scripts/install-tools.sh
+    - src: jenkins/image/
+      dest: jenkins/image/
   register: jenkins_context
 
 - name: Build the SentinelOps Jenkins image (plugins + JCasC baked in)
@@ -28,9 +36,10 @@
     tag: "{{ jenkins_image_tag }}"
     source: build
     build:
-      path: "{{ jenkins_dir }}/image"
+      path: "{{ jenkins_dir }}/build"
+      dockerfile: jenkins/image/Dockerfile
       pull: true
-    force_source: "{{ jenkins_context.changed }}"
+    force_source: "{{ jenkins_context is changed }}"
 
 - name: Look up the docker group id (Jenkins builds images via the host socket)
   ansible.builtin.getent:
@@ -56,6 +65,15 @@
       JENKINS_ADMIN_PASSWORD: "{{ jenkins_admin_password }}"
       GIT_REPO_URL: "{{ jenkins_git_repo_url }}"
       SONAR_HOST_URL: "{{ jenkins_sonar_host_url }}"
+      SONAR_TOKEN: "{{ lookup('ansible.builtin.env', 'SONAR_TOKEN') | default('unset', true) }}"
+      COSIGN_KEY_B64: "{{ lookup('ansible.builtin.env', 'COSIGN_KEY_B64') | default('unset', true) }}"
+      COSIGN_PASSWORD: "{{ lookup('ansible.builtin.env', 'COSIGN_PASSWORD') | default('unset', true) }}"
+      TELEGRAM_BOT_TOKEN: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') | default('unset', true) }}"
+      TELEGRAM_CHAT_ID: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') | default('unset', true) }}"
+      ANTHROPIC_API_KEY: "{{ lookup('ansible.builtin.env', 'ANTHROPIC_API_KEY') | default('unset', true) }}"
+      AWS_REGION: "{{ jenkins_aws_region }}"
+      ECR_REPOSITORY_URL: "{{ jenkins_ecr_repository_url }}"
+      PUSHGATEWAY_URL: "{{ jenkins_pushgateway_url }}"
       JAVA_OPTS: "-Djenkins.install.runSetupWizard=false -Xmx1g"
     volumes:
       - jenkins-home:/var/jenkins_home

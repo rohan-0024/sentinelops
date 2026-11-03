@@ -9,7 +9,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 1 App + tests + Dockerfile + registry | **verified on laptop** | 18 tests, 98.9 % coverage, ruff, checkov Dockerfile 63/63 | done: `make image-test` → SMOKE OK |
 | 2 Terraform | **verified on laptop** (`make verify` incl. tf-check, `make tf-local`) | checkov 203 passed / 0 failed / 28 justified skips; finops handler 8 tests (moto); shellcheck | `make tools && make tf-check && make tf-local`; AWS: `make aws-plan` |
 | 3 Ansible | **verified on laptop** (`make ansible-test`: converge, idempotence 0 changed, verify 11/11) | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
-| 4 Jenkins + SonarQube + Trivy | pending | | |
+| 4 Jenkins + SonarQube + Trivy | done | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | pending | | |
 | 6 Monitoring | pending | | |
 | 7 Unique features 1–6 | pending | | |
@@ -55,3 +55,28 @@ yamllint, ansible-lint, moto) are verified here.
   controller's environment / `.env`, never stored in the repo; tasks use no_log.
 - Jenkins SG now allows 9100 from the VPC CIDR so Prometheus on EKS can scrape
   the CI host.
+
+## Phase 4 notes
+- Jenkins **2.580.2 LTS (Java 21)**: current LTS on 2026-10-28; older LTS lines
+  have published CVEs and newer plugins no longer support them.
+- One image for both modes: plugins resolved against the core's update center
+  (resolved set saved as `plugins.lock.txt` in the image), JCasC for security
+  realm, credentials, SonarQube server, shared library and a multibranch job
+  (`main` + `demo/*`, indexed every 2 min).
+- The Jenkins container mounts the Docker socket, which is root-equivalent on the
+  host. It is accepted for a single-user lab and recorded in the threat model;
+  production would use rootless BuildKit or Kaniko agents.
+- SonarQube Community has no branch analysis, so non-main branches use their own
+  project key (`sentinelops-app-<branch>`). The quality gate "SentinelOps Gate"
+  uses overall-code conditions (coverage >= 80, security/reliability rating A,
+  0 vulnerabilities), because first analyses have no "new code" period.
+- Trivy gate: fail on CRITICAL **with an available fix**. Unfixable CVEs are
+  reported and weighted by the DRS (Phase 7); accepted CVEs go in `.trivyignore`.
+- Signing: Cosign key pair (`make cosign-keygen`), image signed by digest plus two
+  attestations (CycloneDX SBOM and Trivy `cosign-vuln`) so Kyverno can reject
+  unsigned *and* unscanned images in Phase 5. `--tlog-upload=false` because the
+  registry is private.
+- Stages 8, 11 and 12 are guarded by `when { fileExists(...) }` and show as
+  *skipped* until Phases 5 and 7 add their scripts.
+- Groovy is syntax-checked here with npm-groovy-lint. Declarative-pipeline
+  semantics can only be validated by a running Jenkins (owner's laptop).

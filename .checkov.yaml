@@ -2,6 +2,7 @@
 directory:
   - docker
   - terraform
+  - jenkins/image
 framework:
   - dockerfile
   - terraform

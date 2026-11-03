@@ -1,7 +1,7 @@
 ---
 # The Jenkins image is built from the repo's jenkins/image directory (same image as
 # local mode), so local and AWS Jenkins are identical: plugins + JCasC baked in.
-jenkins_build_context: "{{ playbook_dir }}/../jenkins/image"
+jenkins_repo_root: "{{ playbook_dir }}/.."
 jenkins_image_name: sentinelops-jenkins
 jenkins_image_tag: local
 jenkins_port: 8080
@@ -10,3 +10,6 @@ jenkins_mode: aws
 jenkins_git_repo_url: https://github.com/rohan-0024/sentinelops.git
 jenkins_sonar_host_url: "http://sonarqube:9000"
 jenkins_wait_for_up: true
+jenkins_aws_region: "{{ lookup('ansible.builtin.env', 'AWS_REGION') | default('us-east-1', true) }}"
+jenkins_ecr_repository_url: "{{ lookup('ansible.builtin.env', 'ECR_REPOSITORY_URL') }}"
+jenkins_pushgateway_url: "{{ lookup('ansible.builtin.env', 'PUSHGATEWAY_URL') }}"

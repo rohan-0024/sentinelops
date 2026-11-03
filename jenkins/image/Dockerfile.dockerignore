@@ -1,0 +1,5 @@
+# Context is the repo root; allow-list only what the Jenkins image needs.
+*
+!versions.env
+!scripts/install-tools.sh
+!jenkins/image/

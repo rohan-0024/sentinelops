@@ -1,0 +1,129 @@
+# Jenkins Configuration as Code. Every value marked ${...} comes from the container
+# environment (.env in local mode, Ansible in AWS mode). Nothing secret is stored here.
+jenkins:
+  systemMessage: "SentinelOps CI - ${SENTINELOPS_MODE:-local} mode - configured as code (JCasC)"
+  numExecutors: 2
+  mode: NORMAL
+  labelString: "built-in sentinelops"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USER:-admin}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  crumbIssuer: "standard"
+  markupFormatter: "plainText"
+
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true
+
+unclassified:
+  location:
+    url: "${JENKINS_URL:-http://localhost:8080/}"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: "sonarqube"
+        serverUrl: "${SONAR_HOST_URL:-http://sonarqube:9000}"
+        credentialsId: "sonar-token"
+  globalLibraries:
+    libraries:
+      - name: "sentinel-lib"
+        defaultVersion: "main"
+        implicit: false
+        allowVersionOverride: true
+        includeInChangesets: false
+        retriever:
+          modernSCM:
+            libraryPath: "jenkins/shared-library/"
+            scm:
+              git:
+                remote: "${GIT_REPO_URL:-https://github.com/rohan-0024/sentinelops.git}"
+  timestamper:
+    allPipelines: true
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "sonar-token"
+              description: "SonarQube analysis token (scripts/sonar-bootstrap.sh)"
+              secret: "${SONAR_TOKEN:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "cosign-key-b64"
+              description: "Cosign private key, base64 (scripts/cosign-keygen.sh)"
+              secret: "${COSIGN_KEY_B64:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "cosign-password"
+              description: "Cosign private key password"
+              secret: "${COSIGN_PASSWORD:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "telegram-bot-token"
+              secret: "${TELEGRAM_BOT_TOKEN:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "telegram-chat-id"
+              secret: "${TELEGRAM_CHAT_ID:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "slack-webhook"
+              secret: "${SLACK_WEBHOOK_URL:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "anthropic-api-key"
+              secret: "${ANTHROPIC_API_KEY:-unset}"
+          - string:
+              scope: GLOBAL
+              id: "infracost-api-key"
+              secret: "${INFRACOST_API_KEY:-unset}"
+
+jobs:
+  - script: |
+      // Job DSL (inline so JCasC substitutes the repo URL; no script approval needed): one multibranch pipeline that builds `main` and `demo/*` branches
+      // from GitHub. Indexing every 2 minutes replaces a webhook (a laptop Jenkins is
+      // not reachable from GitHub).
+      multibranchPipelineJob('sentinelops') {
+          displayName('SentinelOps')
+          description('Secure CI/CD pipeline: GitHub -> Jenkins -> SonarQube -> Trivy -> Docker -> registry -> Kubernetes')
+          branchSources {
+              branchSource {
+                  source {
+                      git {
+                          id('sentinelops-git')
+                          remote('${GIT_REPO_URL:-https://github.com/rohan-0024/sentinelops.git}')
+                          traits {
+                              gitBranchDiscovery()
+                              headWildcardFilter {
+                                  includes('main demo/*')
+                                  excludes('')
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          factory {
+              workflowBranchProjectFactory {
+                  scriptPath('jenkins/Jenkinsfile')
+              }
+          }
+          triggers {
+              periodicFolderTrigger {
+                  interval('2m')
+              }
+          }
+          orphanedItemStrategy {
+              discardOldItems {
+                  numToKeep(5)
+              }
+          }
+      }

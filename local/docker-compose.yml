@@ -1,16 +1,107 @@
-# Local-mode support services. Phase 4 adds Jenkins and SonarQube here.
-# Started by `make local-up` (or `make localstack` for just LocalStack).
+# Local-mode CI stack. Started by `make local-up` (reads ../.env).
+#   Jenkins   http://localhost:8080   (JCasC, multibranch job "sentinelops")
+#   SonarQube http://localhost:9000
+#   LocalStack (profile "localstack") http://localhost:4566
+# Jenkins joins the external "kind" network so it can reach the kind cluster,
+# the kind-registry and the Pushgateway NodePort.
 name: sentinelops
 
 services:
+  sonar-db:
+    image: postgres:16.6-alpine
+    container_name: sentinelops-sonar-db
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:?run make init-env}
+      POSTGRES_DB: sonarqube
+    volumes:
+      - sonar-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    restart: unless-stopped
+
+  sonarqube:
+    image: sonarqube:10.7.0-community
+    container_name: sentinelops-sonarqube
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonarqube
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD}
+      # Skips Elasticsearch's mmap bootstrap check, so WSL2's default
+      # vm.max_map_count (65530) is fine for a single-node dev instance.
+      SONAR_SEARCH_JAVAADDITIONALOPTS: "-Dnode.store.allow_mmap=false"
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-extensions:/opt/sonarqube/extensions
+      - sonar-logs:/opt/sonarqube/logs
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc: 8192
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+    mem_limit: 3g
+    restart: unless-stopped
+
+  jenkins:
+    build:
+      context: ..
+      dockerfile: jenkins/image/Dockerfile
+    image: sentinelops-jenkins:local
+    container_name: sentinelops-jenkins
+    environment:
+      SENTINELOPS_MODE: local
+      JENKINS_URL: http://localhost:8080/
+      JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?run make init-env}
+      GIT_REPO_URL: ${GIT_REPO_URL:-https://github.com/rohan-0024/sentinelops.git}
+      SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONAR_TOKEN:-unset}
+      COSIGN_KEY_B64: ${COSIGN_KEY_B64:-unset}
+      COSIGN_PASSWORD: ${COSIGN_PASSWORD:-unset}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-unset}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-unset}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-unset}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-unset}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      INFRACOST_API_KEY: ${INFRACOST_API_KEY:-unset}
+      PUSHGATEWAY_URL: http://sentinelops-control-plane:30091
+      KUBECONFIG: /var/jenkins_home/.kube/config
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false -Xmx1g"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - trivy-cache:/var/cache/trivy
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - default
+      - kind
+    mem_limit: 2500m
+    restart: unless-stopped
+
   localstack:
-    image: ${LOCALSTACK_IMAGE:-localstack/localstack:3.8.1}
+    image: localstack/localstack:3.8.1
     container_name: sentinelops-localstack
+    profiles: ["localstack"]
     ports:
       - "127.0.0.1:4566:4566"
     environment:
       SERVICES: s3,dynamodb,lambda,iam,sts,ssm,sqs,kms,logs,cloudwatch,events,secretsmanager
-      LAMBDA_EXECUTOR: docker
       DEBUG: "0"
     volumes:
       - localstack-data:/var/lib/localstack
@@ -21,8 +112,18 @@ services:
       timeout: 5s
       retries: 12
     mem_limit: 1g
-    labels:
-      project: sentinelops
+
+networks:
+  default:
+    name: sentinelops
+  kind:
+    external: true
 
 volumes:
+  sonar-db:
+  sonar-data:
+  sonar-extensions:
+  sonar-logs:
+  jenkins-home:
+  trivy-cache:
   localstack-data:
