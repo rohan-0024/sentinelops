@@ -1,0 +1,6 @@
+# Force LF everywhere: scripts break under WSL/Linux with CRLF.
+* text=auto eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+*.png binary
+*.jpg binary

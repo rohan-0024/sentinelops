@@ -1,0 +1,14 @@
+# checkov config for `make iac-scan`. Directories are added as phases land.
+directory:
+  - docker
+framework:
+  - dockerfile
+  - terraform
+  - kubernetes
+  - helm
+compact: true
+quiet: true
+output:
+  - cli
+soft-fail: false
+skip-download: true

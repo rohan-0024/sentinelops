@@ -1,0 +1,47 @@
+# Secrets / local config
+.env
+*.pem
+*.key
+!policy/keys/*.pub
+cosign.key
+*.tfvars
+!*.tfvars.example
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+.terraform.lock.hcl.bak
+tfplan
+*.tfplan
+
+# Tooling / build output
+.bin/
+reports/
+dist/
+build/
+*.log
+kubeconfig*
+.kube/
+
+# Ansible
+*.retry
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,22 @@
+# Assumptions and design decisions
+
+Each item states the assumption, why it was made, and what changes if it is wrong.
+
+| # | Assumption / decision | Reason | If wrong |
+|---|---|---|---|
+| A1 | Owner runs everything from **WSL2 Ubuntu** on Windows with Docker Desktop (WSL2 backend) and 16 GB RAM. | Makefile, bash, kind and Ansible need a Linux shell. | macOS/Linux also work unchanged. |
+| A2 | Sample service is **Python 3.11 + FastAPI**. | Owner's choice; 3.11 matches the distroless Python runtime. | — |
+| A3 | Runtime image is `gcr.io/distroless/python3-debian12:nonroot`. | Smallest attack surface, no shell, non-root UID 65532. | Swap to `python:3.11-slim` in `docker/Dockerfile` if a debug shell is needed. |
+| A4 | **Local mode uses kind + a local registry, not LocalStack, for EKS/ECR.** | EKS and ECR emulation are LocalStack Pro (paid) features. LocalStack Community is used for S3, DynamoDB, Lambda, EventBridge and Secrets Manager (FinOps Lambda + state backend tests). | — |
+| A5 | **Prometheus, Grafana, Alertmanager, node-exporter and kube-state-metrics run inside kind** (kube-prometheus-stack Helm chart) rather than in Compose. | Argo Rollouts AnalysisTemplates and Kyverno metrics must be scraped in-cluster; one Prometheus avoids duplication. Exposed on localhost via kind port mappings. Compose runs Jenkins, SonarQube (+Postgres), registry and LocalStack. | — |
+| A6 | Image signing uses a **Cosign key pair** (not keyless). | Keyless needs Fulcio/Rekor + OIDC; key pair works offline and in AWS. Private key is a Jenkins credential; public key is in a Kyverno policy. | — |
+| A7 | **Canary traffic split is replica-based** (Argo Rollouts without a service mesh). 10 replicas at the canary step make 10 %/50 % exact. | A mesh (Istio/Linkerd) would cost ~2 GB RAM and complexity. | Add `trafficRouting` to the Rollout if NGINX ingress is installed. |
+| A8 | **Chaos uses a kubectl-based engine** (`tools/chaos`: pod kill + `stress-ng` CPU pod) by default; Chaos Mesh manifests are provided as optional. | Lower RAM, fewer moving parts, works identically on EKS. | `CHAOS_ENGINE=chaos-mesh`. |
+| A9 | **AWS Academy Learner Lab**: no IAM role/OIDC-provider creation, region us-east-1, sessions expire ~4 h. Terraform `lab_mode = true` reuses `LabRole` for EKS cluster, node group, Lambda and EC2 instance profile (`LabInstanceProfile`); IRSA is skipped. | Learner Lab IAM restrictions. | Set `lab_mode = false` on a standard account to create dedicated roles + IRSA. |
+| A10 | Remote state (S3 + DynamoDB) is created by the `state-backend` module from a separate bootstrap root (`terraform/bootstrap`). | Chicken-and-egg: the backend must exist before `envs/aws` can use it. | — |
+| A11 | DORA metrics are **derived from pipeline events** pushed to Pushgateway (deploy timestamp, commit timestamp, success/failure, restore time). | No external DORA tool; the numbers are approximations and are labelled as such. | — |
+| A12 | GitHub → local Jenkins triggering uses **Poll SCM (every 2 min)** by default; a webhook via a tunnel (e.g. ngrok) is optional. | A Jenkins on a laptop is not reachable from GitHub. | — |
+| A13 | Notifications go to **Telegram** (bot token + chat id) and/or **Slack** (incoming webhook). Both optional; missing config → logged and skipped. | Free, quick to set up. | — |
+| A14 | The AI Failure Explainer calls the **Anthropic Messages API** only when `ANTHROPIC_API_KEY` is set; otherwise a rule-based engine runs. | Feature must always work. | — |
+| A15 | SonarQube Community Edition (self-hosted) in local mode. In AWS mode SonarQube runs on the Jenkins EC2 (t3.large), configured by Ansible. | Community edition is free; 2–4 GB RAM. | SonarCloud (free for public repos) can replace it by changing `SONAR_HOST_URL`. |
+| A16 | Policy tooling: **checkov** for Terraform + K8s manifests in CI, **Kyverno** for admission control in the cluster, **OPA/Rego (conftest)** for a small set of pipeline-level rules (e.g. DRS report sanity, Helm values guardrails). | Avoids three overlapping policy engines doing the same job. | — |
