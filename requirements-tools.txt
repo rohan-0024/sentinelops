@@ -6,6 +6,6 @@ ansible==10.7.0
 ansible-core==2.17.7
 ansible-lint==24.12.2
 boto3==1.35.49
-moto[s3,dynamodb,events,lambda,ec2,eks,autoscaling]==5.0.22
+moto[s3,dynamodb,events,awslambda,ec2,eks,autoscaling]==5.0.22
 requests==2.32.3
 shellcheck-py==0.10.0.1

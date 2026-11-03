@@ -4,7 +4,7 @@
 dependency:
   name: galaxy
   options:
-    requirements-file: requirements.yml
+    requirements-file: ${MOLECULE_SCENARIO_DIRECTORY}/../../requirements.yml
 driver:
   name: docker
 platforms:
@@ -22,9 +22,9 @@ platforms:
       - /tmp
 provisioner:
   name: ansible
-  config_options:
-    defaults:
-      roles_path: ${MOLECULE_PROJECT_DIRECTORY}/roles
+  # Molecule's project dir is the git root, so point at ansible/roles explicitly.
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_SCENARIO_DIRECTORY}/../../roles
   inventory:
     group_vars:
       all:
