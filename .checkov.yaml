@@ -1,6 +1,7 @@
 # checkov config for `make iac-scan`. Directories are added as phases land.
 directory:
   - docker
+  - terraform
 framework:
   - dockerfile
   - terraform

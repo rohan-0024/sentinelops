@@ -1,0 +1,28 @@
+# Local-mode support services. Phase 4 adds Jenkins and SonarQube here.
+# Started by `make local-up` (or `make localstack` for just LocalStack).
+name: sentinelops
+
+services:
+  localstack:
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:3.8.1}
+    container_name: sentinelops-localstack
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      SERVICES: s3,dynamodb,lambda,iam,sts,ssm,sqs,kms,logs,cloudwatch,events,secretsmanager
+      LAMBDA_EXECUTOR: docker
+      DEBUG: "0"
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 1g
+    labels:
+      project: sentinelops
+
+volumes:
+  localstack-data:

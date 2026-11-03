@@ -61,6 +61,30 @@ registry: ## Start the local registry (localhost:5001)
 push-local: build registry ## Push the image to the local registry
 	docker push $(IMAGE_LOCAL)
 
+##@ Terraform
+.PHONY: tf-fmt tf-validate tf-lint tf-check localstack tf-local aws-bootstrap-plan aws-bootstrap aws-plan aws-apply aws-destroy
+tf-fmt: ## terraform fmt -check (recursive)
+	@bash scripts/terraform.sh fmt
+tf-validate: ## terraform validate every root and module (no backend, no AWS creds)
+	@bash scripts/terraform.sh validate
+tf-lint: ## tflint every root and module
+	@bash scripts/terraform.sh lint
+tf-check: tf-fmt tf-validate tf-lint ## fmt + validate + tflint
+localstack: ## Start LocalStack (local AWS emulation)
+	docker compose -f local/docker-compose.yml up -d --wait localstack
+tf-local: localstack ## LOCAL MODE: apply state-backend + finops modules to LocalStack (free)
+	@bash scripts/terraform.sh local
+aws-bootstrap-plan: ## Plan the S3+DynamoDB state backend (needs AWS creds)
+	@bash scripts/terraform.sh bootstrap-plan
+aws-bootstrap: ## Create the state backend - asks you to type APPLY
+	@bash scripts/terraform.sh bootstrap-apply
+aws-plan: ## Plan the AWS environment (+ Infracost if INFRACOST_API_KEY). Creates nothing
+	@bash scripts/terraform.sh plan
+aws-apply: ## Apply the saved plan - asks you to type APPLY (billable!)
+	@bash scripts/terraform.sh apply
+aws-destroy: ## Destroy the AWS environment - asks you to type DESTROY
+	@bash scripts/terraform.sh destroy
+
 ##@ Quality
 .PHONY: lint
 lint: venv ## Lint Python, YAML and shell
@@ -79,6 +103,13 @@ iac-scan: venv ## checkov over Dockerfile, Terraform and Kubernetes manifests
 	@mkdir -p $(REPORTS)
 	$(PY) -m checkov.main --config-file .checkov.yaml
 
+.PHONY: test-tools
+test-tools: venv ## Unit tests for tools/ (drs, explain, finops, chaos)
+	@mkdir -p $(REPORTS)
+	$(PY) -m pytest tools/tests -q -p no:cacheprovider --junitxml=$(REPORTS)/junit-tools.xml
+
 .PHONY: verify
-verify: lint test iac-scan ## Run every check that does not need a cluster or AWS
+verify: lint test test-tools iac-scan ## All checks that need no cluster/AWS (+ terraform checks if terraform is installed)
+	@if command -v terraform >/dev/null && command -v tflint >/dev/null; then $(MAKE) --no-print-directory tf-check; \
+	  else echo "terraform/tflint not installed - run 'make tools' to include tf-check"; fi
 	@echo "verify: OK"

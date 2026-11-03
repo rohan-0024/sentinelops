@@ -1,0 +1,5 @@
+# cp terraform.tfvars.example terraform.tfvars   (terraform.tfvars is git-ignored)
+lab_mode    = true                  # AWS Academy Learner Lab
+admin_cidrs = ["203.0.113.10/32"]   # replace: curl -s https://checkip.amazonaws.com
+key_name    = "vockey"
+region      = "us-east-1"

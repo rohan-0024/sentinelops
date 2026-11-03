@@ -1,0 +1,6 @@
+# cp backend.hcl.example backend.hcl, then fill from `terraform -chdir=terraform/bootstrap output -raw backend_hcl`
+bucket         = "sentinelops-tfstate-<ACCOUNT_ID>"
+key            = "sentinelops/aws/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "sentinelops-tf-locks"
+encrypt        = true

@@ -45,3 +45,5 @@ kubeconfig*
 Thumbs.db
 .vscode/
 .idea/
+terraform/modules/*/.build/
+terraform/envs/aws/backend.hcl
