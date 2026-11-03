@@ -41,10 +41,14 @@ yamllint, ansible-lint, moto) are verified here.
 ## Phase 3 notes
 - Role `node-exporter` from the brief is named `node_exporter` (Ansible role names
   must be `[a-z0-9_]`).
-- Molecule converges hardening, docker, node_exporter and trivy in a systemd
-  Ubuntu 22.04 container, checks idempotence, then verifies (sshd hardening,
-  pinned + held docker-ce, node metrics on :9100, Trivy 0.58.1). Firewall,
-  sysctl, nested dockerd and the Trivy DB download are disabled in the container.
+- Molecule converges hardening, docker, node_exporter and trivy in an Ubuntu
+  22.04 container, checks idempotence, then verifies (sshd hardening, pinned +
+  held docker-ce, node_exporter unit installed and serving metrics on :9100,
+  Trivy 0.58.1). systemd as PID 1 exits immediately under WSL2 + Docker Desktop
+  (verified on the owner's laptop: exit 255), so the test container has no
+  systemd: services are installed but node_exporter is started directly in
+  verify. Firewall, sysctl, nested dockerd and the Trivy DB download are
+  disabled in the container; on EC2 they all run normally.
 - `jenkins` and `sonarqube` roles run the same container images as local mode;
   they are lint/syntax-checked here and exercised end-to-end on the EC2 host.
 - Secrets (JENKINS_ADMIN_PASSWORD, SONAR_DB_PASSWORD) are read from the

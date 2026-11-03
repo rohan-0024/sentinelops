@@ -1,5 +1,5 @@
 ---
-# Molecule test for the CI-host roles in a systemd-enabled Ubuntu 22.04 container.
+# Molecule test for the CI-host roles in an Ubuntu 22.04 container (no systemd; see Dockerfile).
 # Run from ansible/:  molecule test     (or `make ansible-test` from the repo root)
 dependency:
   name: galaxy
@@ -12,14 +12,7 @@ platforms:
     image: sentinelops-molecule-jammy
     dockerfile: Dockerfile
     pre_build_image: false
-    privileged: true
-    cgroupns_mode: host
-    command: /lib/systemd/systemd
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    tmpfs:
-      - /run
-      - /tmp
+    command: sleep infinity
 provisioner:
   name: ansible
   # Molecule's project dir is the git root, so point at ansible/roles explicitly.
@@ -32,6 +25,7 @@ provisioner:
         hardening_firewall_enabled: false # no netfilter inside the test container
         hardening_apply_sysctl: false # host kernel params are read-only in containers
         docker_manage_service: false # no nested dockerd
+        node_exporter_manage_service: false # no systemd; verify.yml starts the binary directly
         trivy_download_db: false # keep the test fast and offline-friendly
 verifier:
   name: ansible

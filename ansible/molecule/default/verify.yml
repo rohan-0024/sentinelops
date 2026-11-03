@@ -36,6 +36,19 @@
       changed_when: false
       failed_when: "'docker-ce' not in verify_holds.stdout"
 
+    - name: Assert the node_exporter systemd unit was installed
+      ansible.builtin.stat:
+        path: /etc/systemd/system/node_exporter.service
+      register: verify_unit
+      failed_when: not verify_unit.stat.exists
+
+    - name: Start node_exporter directly as its service user (no systemd in the container)
+      ansible.builtin.shell: >-
+        pgrep -x node_exporter ||
+        (nohup sudo -u node_exporter /usr/local/bin/node_exporter
+        --web.listen-address=127.0.0.1:9100 >/tmp/node_exporter.log 2>&1 &)
+      changed_when: false
+
     - name: Scrape node_exporter
       ansible.builtin.uri:
         url: http://127.0.0.1:9100/metrics
