@@ -1,0 +1,10 @@
+---
+# Pinned collections. The `ansible==10.7.0` pip package already bundles these;
+# this file is for controllers that only have ansible-core.
+collections:
+  - name: community.docker
+    version: 3.13.3
+  - name: community.general
+    version: 9.5.2
+  - name: ansible.posix
+    version: 1.6.2

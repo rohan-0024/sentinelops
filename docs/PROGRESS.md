@@ -6,9 +6,9 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | Phase | Status | Verified here | Owner must run |
 |---|---|---|---|
 | 0 Plan & conventions | done | files, `make help` | — |
-| 1 App + tests + Dockerfile + registry | done | 18 tests, 98.9 % coverage, ruff, checkov Dockerfile 63/63 | `make tools && make image-test && make push-local` |
-| 2 Terraform | done | checkov 203 passed / 0 failed / 28 justified skips; finops handler 8 tests (moto); shellcheck | `make tools && make tf-check && make tf-local`; AWS: `make aws-plan` |
-| 3 Ansible | pending | | |
+| 1 App + tests + Dockerfile + registry | **verified on laptop** | 18 tests, 98.9 % coverage, ruff, checkov Dockerfile 63/63 | done: `make image-test` → SMOKE OK |
+| 2 Terraform | **verified on laptop** (`make verify` incl. tf-check, `make tf-local`) | checkov 203 passed / 0 failed / 28 justified skips; finops handler 8 tests (moto); shellcheck | `make tools && make tf-check && make tf-local`; AWS: `make aws-plan` |
+| 3 Ansible | done | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
 | 4 Jenkins + SonarQube + Trivy | pending | | |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | pending | | |
 | 6 Monitoring | pending | | |
@@ -37,3 +37,17 @@ yamllint, ansible-lint, moto) are verified here.
 - `terraform validate` / `tflint` could not run in the build workspace
   (registry.terraform.io and GitHub releases are blocked); they run on the laptop
   via `make tf-check`.
+
+## Phase 3 notes
+- Role `node-exporter` from the brief is named `node_exporter` (Ansible role names
+  must be `[a-z0-9_]`).
+- Molecule converges hardening, docker, node_exporter and trivy in a systemd
+  Ubuntu 22.04 container, checks idempotence, then verifies (sshd hardening,
+  pinned + held docker-ce, node metrics on :9100, Trivy 0.58.1). Firewall,
+  sysctl, nested dockerd and the Trivy DB download are disabled in the container.
+- `jenkins` and `sonarqube` roles run the same container images as local mode;
+  they are lint/syntax-checked here and exercised end-to-end on the EC2 host.
+- Secrets (JENKINS_ADMIN_PASSWORD, SONAR_DB_PASSWORD) are read from the
+  controller's environment / `.env`, never stored in the repo; tasks use no_log.
+- Jenkins SG now allows 9100 from the VPC CIDR so Prometheus on EKS can scrape
+  the CI host.

@@ -1,0 +1,15 @@
+---
+# Pinned Docker Engine packages from download.docker.com (Ubuntu 22.04 "jammy").
+docker_version: "5:27.4.1-1~ubuntu.22.04~jammy"
+docker_containerd_version: "1.7.24-1"
+docker_users: [ubuntu]
+docker_daemon_options:
+  log-driver: json-file
+  log-opts:
+    max-size: "10m"
+    max-file: "3"
+  live-restore: true
+  no-new-privileges: true
+  userland-proxy: false
+# Start the service (false inside test containers without systemd-managed dockerd)
+docker_manage_service: true

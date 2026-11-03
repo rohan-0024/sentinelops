@@ -87,6 +87,21 @@ aws-apply: ## Apply the saved plan - asks you to type APPLY (billable!)
 aws-destroy: ## Destroy the AWS environment - asks you to type DESTROY
 	@bash scripts/terraform.sh destroy
 
+##@ Ansible
+.PHONY: ansible-lint ansible-test ansible-inventory ansible-aws
+ansible-lint: venv ## ansible-lint (production profile) + playbook syntax check
+	cd ansible && $(ROOT)/.venv/bin/ansible-lint --offline
+	cd ansible && $(ROOT)/.venv/bin/ansible-playbook -i "jenkins," site.yml --syntax-check
+.venv/.molecule: requirements-molecule.txt venv
+	.venv/bin/pip install -q -r requirements-molecule.txt
+	touch $@
+ansible-test: .venv/.molecule ## Molecule: converge + idempotence + verify in a systemd container (needs Docker)
+	cd ansible && $(ROOT)/.venv/bin/molecule test
+ansible-inventory: ## Build ansible/inventory/aws.ini from terraform outputs
+	@bash scripts/ansible-inventory.sh
+ansible-aws: venv ansible-inventory ## Configure the Jenkins EC2 host (needs .env secrets + labsuser.pem)
+	set -a; [ -f .env ] && . ./.env; set +a; cd ansible && $(ROOT)/.venv/bin/ansible-playbook site.yml
+
 ##@ Quality
 .PHONY: lint
 lint: venv ## Lint Python, YAML and shell
@@ -111,7 +126,7 @@ test-tools: venv ## Unit tests for tools/ (drs, explain, finops, chaos)
 	$(PY) -m pytest tools/tests -q -p no:cacheprovider --junitxml=$(REPORTS)/junit-tools.xml
 
 .PHONY: verify
-verify: lint test test-tools iac-scan ## All checks that need no cluster/AWS (+ terraform checks if terraform is installed)
+verify: lint ansible-lint test test-tools iac-scan ## All checks that need no cluster/AWS (+ terraform checks if terraform is installed)
 	@if command -v terraform >/dev/null && command -v tflint >/dev/null; then $(MAKE) --no-print-directory tf-check; \
 	  else echo "terraform/tflint not installed - run 'make tools' to include tf-check"; fi
 	@echo "verify: OK"

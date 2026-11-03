@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: hardening
+    - role: docker
+    - role: node_exporter
+    - role: trivy

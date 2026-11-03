@@ -1,0 +1,20 @@
+---
+# Configures the Jenkins/SonarQube EC2 host created by terraform/modules/jenkins-ec2.
+#   make ansible-aws     (generates inventory from terraform outputs, then runs this)
+- name: Configure SentinelOps CI host
+  hosts: ci
+  become: true
+  gather_facts: true
+  roles:
+    - role: hardening
+      tags: [hardening]
+    - role: docker
+      tags: [docker]
+    - role: node_exporter
+      tags: [node_exporter]
+    - role: trivy
+      tags: [trivy]
+    - role: sonarqube
+      tags: [sonarqube, services]
+    - role: jenkins
+      tags: [jenkins, services]

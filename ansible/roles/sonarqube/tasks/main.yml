@@ -1,0 +1,84 @@
+---
+# SonarQube Community + PostgreSQL as containers (same images as local Compose).
+- name: Fail early if the database password is missing
+  ansible.builtin.assert:
+    that: sonarqube_db_password | length >= 12
+    fail_msg: "Set SONAR_DB_PASSWORD (>= 12 chars) in the environment before running the playbook."
+  no_log: true
+
+- name: Kernel settings required by SonarQube's embedded Elasticsearch
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-sonarqube.conf
+    reload: true
+  loop:
+    - key: vm.max_map_count
+      value: "524288"
+    - key: fs.file-max
+      value: "131072"
+  when: sonarqube_apply_sysctl | bool
+
+- name: Create SonarQube directories
+  ansible.builtin.file:
+    path: "{{ sonarqube_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Create the shared Docker network
+  community.docker.docker_network:
+    name: "{{ sentinelops_network }}"
+
+- name: Run PostgreSQL for SonarQube
+  community.docker.docker_container:
+    name: sonarqube-db
+    image: "{{ sonarqube_postgres_image }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ sentinelops_network }}"
+    env:
+      POSTGRES_USER: "{{ sonarqube_db_user }}"
+      POSTGRES_PASSWORD: "{{ sonarqube_db_password }}"
+      POSTGRES_DB: "{{ sonarqube_db_name }}"
+    volumes: [sonarqube-db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ sonarqube_db_user }}"]
+      interval: 10s
+      retries: 10
+    labels:
+      project: sentinelops
+  no_log: true
+
+- name: Run SonarQube
+  community.docker.docker_container:
+    name: sonarqube
+    image: "{{ sonarqube_image }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ sentinelops_network }}"
+    published_ports: ["{{ sonarqube_port }}:9000"]
+    memory: "{{ sonarqube_memory }}"
+    ulimits: ["nofile:131072:131072", "nproc:8192:8192"]
+    env:
+      SONAR_JDBC_URL: "jdbc:postgresql://sonarqube-db:5432/{{ sonarqube_db_name }}"
+      SONAR_JDBC_USERNAME: "{{ sonarqube_db_user }}"
+      SONAR_JDBC_PASSWORD: "{{ sonarqube_db_password }}"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    labels:
+      project: sentinelops
+  no_log: true
+
+- name: Wait until SonarQube reports UP
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ sonarqube_port }}/api/system/status"
+    return_content: true
+  register: sonarqube_status
+  until: sonarqube_status.json is defined and sonarqube_status.json.status == 'UP'
+  retries: 60
+  delay: 10
+  when: sonarqube_wait_for_up | bool

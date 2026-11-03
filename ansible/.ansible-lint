@@ -1,0 +1,6 @@
+---
+profile: production
+exclude_paths:
+  - molecule/default/Dockerfile
+  - .cache/
+warn_list: []

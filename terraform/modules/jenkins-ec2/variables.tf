@@ -8,6 +8,11 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "vpc_cidr" {
+  description = "VPC CIDR (allowed to scrape node_exporter on 9100)."
+  type        = string
+}
+
 variable "subnet_id" {
   description = "Public subnet for the Jenkins host."
   type        = string

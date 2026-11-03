@@ -1,0 +1,87 @@
+---
+- name: Install security packages
+  ansible.builtin.apt:
+    name: "{{ hardening_packages_present }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Remove legacy insecure packages
+  ansible.builtin.apt:
+    name: "{{ hardening_packages_absent }}"
+    state: absent
+
+- name: Enable automatic security updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Harden sshd (drop-in config)
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-sentinelops-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart sshd
+
+- name: Apply kernel/network sysctl hardening
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/90-sentinelops.conf
+    state: present
+    reload: true
+  loop: "{{ hardening_sysctl | dict2items }}"
+  when: hardening_apply_sysctl | bool
+
+- name: Restrict cron and at to root
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+  loop: [/etc/cron.allow, /etc/at.allow]
+
+- name: Configure fail2ban for sshd
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.d/sshd.local
+    content: |
+      [sshd]
+      enabled = true
+      port = {{ hardening_ssh_port }}
+      maxretry = 5
+      bantime = 1h
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Firewall
+  when: hardening_firewall_enabled | bool
+  block:
+    - name: Install ufw
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Allow required TCP ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item | string }}"
+        proto: tcp
+      loop: "{{ hardening_allowed_tcp_ports }}"
+
+    - name: Default deny incoming, enable ufw
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming

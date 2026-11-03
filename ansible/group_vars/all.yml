@@ -1,0 +1,14 @@
+---
+# Shared settings. Secrets are NOT stored here: they are read from the controller's
+# environment (.env) at run time via lookup('env', ...).
+sentinelops_base_dir: /opt/sentinelops
+sentinelops_network: sentinelops
+
+# Ports opened by the hardening role's firewall
+hardening_allowed_tcp_ports: [22, 8080, 9000, 9100]
+
+# Credentials come from the environment of whoever runs ansible-playbook
+jenkins_admin_user: "{{ lookup('ansible.builtin.env', 'JENKINS_ADMIN_USER') | default('admin', true) }}"
+jenkins_admin_password: "{{ lookup('ansible.builtin.env', 'JENKINS_ADMIN_PASSWORD') }}"
+# SONAR_DB_PASSWORD is required for AWS runs (stable across re-runs; a random value would break the DB).
+sonarqube_db_password: "{{ lookup('ansible.builtin.env', 'SONAR_DB_PASSWORD') }}"

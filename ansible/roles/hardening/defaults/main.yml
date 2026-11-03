@@ -1,0 +1,18 @@
+---
+hardening_firewall_enabled: true
+hardening_allowed_tcp_ports: [22]
+hardening_ssh_port: 22
+hardening_packages_present: [unattended-upgrades, fail2ban, auditd, apt-transport-https, ca-certificates]
+hardening_packages_absent: [telnet, rsh-client, rsh-redone-client, nis, talk]
+hardening_sysctl:
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.tcp_syncookies: 1
+  kernel.randomize_va_space: 2
+  fs.suid_dumpable: 0
+# sysctl writes fail inside unprivileged containers (Molecule); real hosts apply them.
+hardening_apply_sysctl: true

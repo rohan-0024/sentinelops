@@ -39,6 +39,7 @@ kubeconfig*
 
 # Ansible
 *.retry
+ansible/inventory/aws.ini
 
 # OS / editors
 .DS_Store

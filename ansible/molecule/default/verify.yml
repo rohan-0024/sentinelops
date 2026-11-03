@@ -1,0 +1,56 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read sshd hardening drop-in
+      ansible.builtin.slurp:
+        src: /etc/ssh/sshd_config.d/10-sentinelops-hardening.conf
+      register: verify_sshd
+
+    - name: Assert root login and password auth are disabled
+      ansible.builtin.assert:
+        that:
+          - "'PermitRootLogin no' in (verify_sshd.content | b64decode)"
+          - "'PasswordAuthentication no' in (verify_sshd.content | b64decode)"
+
+    - name: Assert insecure packages are absent
+      ansible.builtin.command: dpkg -s telnet
+      register: verify_telnet
+      changed_when: false
+      failed_when: verify_telnet.rc == 0
+
+    - name: Read docker-ce package state
+      ansible.builtin.command: dpkg-query -W -f='${Version} ${Status}' docker-ce
+      register: verify_docker
+      changed_when: false
+
+    - name: Assert docker-ce is the pinned version
+      ansible.builtin.assert:
+        that: verify_docker.stdout.startswith('5:27.4.1-1~ubuntu.22.04~jammy')
+
+    - name: Assert docker-ce is held
+      ansible.builtin.command: apt-mark showhold
+      register: verify_holds
+      changed_when: false
+      failed_when: "'docker-ce' not in verify_holds.stdout"
+
+    - name: Scrape node_exporter
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: verify_ne
+      retries: 10
+      delay: 2
+      until: verify_ne.status == 200
+
+    - name: Assert node metrics are exposed
+      ansible.builtin.assert:
+        that: "'node_cpu_seconds_total' in verify_ne.content"
+
+    - name: Check Trivy version
+      ansible.builtin.command: trivy --version
+      register: verify_trivy
+      changed_when: false
+      failed_when: "'0.58.1' not in verify_trivy.stdout"

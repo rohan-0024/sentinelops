@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: docker
+  namespace: sentinelops
+  author: Rohan Paul
+  description: Pinned Docker Engine with hardened daemon defaults
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy]
+dependencies: []

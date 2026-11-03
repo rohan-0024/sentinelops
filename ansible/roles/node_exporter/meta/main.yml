@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: node_exporter
+  namespace: sentinelops
+  author: Rohan Paul
+  description: Prometheus node_exporter as a sandboxed systemd service
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy]
+dependencies: []

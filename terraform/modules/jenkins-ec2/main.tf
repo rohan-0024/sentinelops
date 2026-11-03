@@ -42,6 +42,13 @@ resource "aws_security_group" "jenkins" {
     protocol    = "tcp"
     cidr_blocks = var.admin_cidrs
   }
+  ingress {
+    description = "node_exporter scrape from inside the VPC (Prometheus on EKS)"
+    from_port   = 9100
+    to_port     = 9100
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
   egress {
     description = "HTTPS out (GitHub, ECR, EKS API, package mirrors)"
     from_port   = 443

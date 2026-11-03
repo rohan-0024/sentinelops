@@ -1,0 +1,4 @@
+# Installed only by `make ansible-test` (laptop, needs Docker).
+-r requirements-tools.txt
+molecule==24.12.0
+molecule-plugins[docker]==23.6.0

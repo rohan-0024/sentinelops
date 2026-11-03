@@ -1,0 +1,35 @@
+---
+- name: Set Trivy package URL
+  ansible.builtin.set_fact:
+    trivy_deb_url: >-
+      https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version }}/trivy_{{ trivy_version }}_Linux-{{
+      '64bit' if ansible_architecture == 'x86_64' else 'ARM64' }}.deb
+
+- name: Install pinned Trivy .deb
+  ansible.builtin.apt:
+    deb: "{{ trivy_deb_url }}"
+    state: present
+
+- name: Create shared Trivy cache directory
+  ansible.builtin.file:
+    path: "{{ trivy_cache_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0777"
+
+- name: Check installed Trivy version
+  ansible.builtin.command: trivy --version
+  register: trivy_installed
+  changed_when: false
+
+- name: Assert the pinned version is installed
+  ansible.builtin.assert:
+    that: trivy_version in trivy_installed.stdout
+    fail_msg: "Expected Trivy {{ trivy_version }}, got: {{ trivy_installed.stdout }}"
+
+- name: Pre-download the vulnerability database
+  ansible.builtin.command: trivy image --download-db-only --cache-dir {{ trivy_cache_dir }}
+  args:
+    creates: "{{ trivy_cache_dir }}/db/trivy.db"
+  when: trivy_download_db | bool

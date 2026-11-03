@@ -1,0 +1,76 @@
+---
+- name: Fail early if the admin password is missing
+  ansible.builtin.assert:
+    that: jenkins_admin_password | length >= 8
+    fail_msg: "Set JENKINS_ADMIN_PASSWORD (>= 8 chars) in the environment before running the playbook."
+  no_log: true
+
+- name: Create Jenkins build directory
+  ansible.builtin.file:
+    path: "{{ jenkins_dir }}/image"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Copy the Jenkins image build context
+  ansible.builtin.copy:
+    src: "{{ jenkins_build_context }}/"
+    dest: "{{ jenkins_dir }}/image/"
+    owner: root
+    group: root
+    mode: preserve
+  register: jenkins_context
+
+- name: Build the SentinelOps Jenkins image (plugins + JCasC baked in)
+  community.docker.docker_image:
+    name: "{{ jenkins_image_name }}"
+    tag: "{{ jenkins_image_tag }}"
+    source: build
+    build:
+      path: "{{ jenkins_dir }}/image"
+      pull: true
+    force_source: "{{ jenkins_context.changed }}"
+
+- name: Look up the docker group id (Jenkins builds images via the host socket)
+  ansible.builtin.getent:
+    database: group
+    key: docker
+
+- name: Create the shared Docker network
+  community.docker.docker_network:
+    name: "{{ sentinelops_network }}"
+
+- name: Run Jenkins
+  community.docker.docker_container:
+    name: jenkins
+    image: "{{ jenkins_image_name }}:{{ jenkins_image_tag }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ sentinelops_network }}"
+    published_ports: ["{{ jenkins_port }}:8080"]
+    groups: ["{{ ansible_facts.getent_group.docker[1] }}"]
+    env:
+      SENTINELOPS_MODE: "{{ jenkins_mode }}"
+      JENKINS_ADMIN_USER: "{{ jenkins_admin_user }}"
+      JENKINS_ADMIN_PASSWORD: "{{ jenkins_admin_password }}"
+      GIT_REPO_URL: "{{ jenkins_git_repo_url }}"
+      SONAR_HOST_URL: "{{ jenkins_sonar_host_url }}"
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false -Xmx1g"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/cache/trivy:/var/cache/trivy
+    labels:
+      project: sentinelops
+  no_log: true
+
+- name: Wait until Jenkins answers
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ jenkins_port }}/login"
+    status_code: 200
+  register: jenkins_login
+  until: jenkins_login.status == 200
+  retries: 40
+  delay: 10
+  when: jenkins_wait_for_up | bool

@@ -2,6 +2,7 @@
 pyyaml==6.0.2
 yamllint==1.35.1
 checkov==3.3.30
+ansible==10.7.0
 ansible-core==2.17.7
 ansible-lint==24.12.2
 boto3==1.35.49
