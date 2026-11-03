@@ -1,0 +1,5 @@
+# Reviewed false positives, by gitleaks fingerprint (commit:file:rule:line).
+# 65385df: `curl -u admin:admin` was SonarQube's documented first-boot default,
+# replaced by a generated password in the same script. Rewritten in a later commit
+# to pass credentials via stdin (no credentials on the command line).
+65385df0f073d7697f7481c80711f0362f5e0628:scripts/sonar-bootstrap.sh:curl-auth-user:31

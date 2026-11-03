@@ -20,19 +20,26 @@ for _ in $(seq 1 90); do
 done
 curl -fsS "${SONAR}/api/system/status" | grep -q '"status":"UP"' || { echo "SonarQube did not come up" >&2; exit 1; }
 
+# Credentials go to curl through a config on stdin, never on the command line
+# (command-line passwords are visible in `ps` and flagged by gitleaks).
+authcurl() { # user:password [curl args...]
+  local creds="$1"; shift
+  printf 'user = "%s"\n' "${creds}" | curl -fsS -K - "$@"
+}
+
 api() { # method path [curl args...]
   local method="$1" path="$2"; shift 2
-  curl -fsS -u "admin:${ADMIN_PW}" -X "${method}" "${SONAR}${path}" "$@"
+  authcurl "admin:${ADMIN_PW}" -X "${method}" "${SONAR}${path}" "$@"
 }
 
 # 1. admin password
-if ! curl -fsS -u "admin:${ADMIN_PW}" "${SONAR}/api/authentication/validate" | grep -q '"valid":true'; then
+if ! authcurl "admin:${ADMIN_PW}" "${SONAR}/api/authentication/validate" | grep -q '"valid":true'; then
   echo "changing default admin password"
-  curl -fsS -u admin:admin -X POST "${SONAR}/api/users/change_password" \
+  authcurl "admin:admin" -X POST "${SONAR}/api/users/change_password" \
     --data-urlencode "login=admin" --data-urlencode "previousPassword=admin" \
     --data-urlencode "password=${ADMIN_PW}" >/dev/null
 fi
-curl -fsS -u "admin:${ADMIN_PW}" "${SONAR}/api/authentication/validate" | grep -q '"valid":true' \
+authcurl "admin:${ADMIN_PW}" "${SONAR}/api/authentication/validate" | grep -q '"valid":true' \
   || { echo "cannot authenticate as admin" >&2; exit 1; }
 
 # 2. quality gate on overall code (first analyses have no "new code" period)
@@ -57,7 +64,7 @@ fi
 # 4. analysis token for Jenkins
 token="$(${ENVPY} get SONAR_TOKEN)"
 if [[ -n "${token}" && "${token}" != "unset" ]] \
-   && curl -fsS -u "${token}:" "${SONAR}/api/authentication/validate" | grep -q '"valid":true'; then
+   && authcurl "${token}:" "${SONAR}/api/authentication/validate" | grep -q '"valid":true'; then
   echo "existing SONAR_TOKEN is valid"
 else
   api POST /api/user_tokens/revoke --data-urlencode "name=jenkins" >/dev/null 2>&1 || true

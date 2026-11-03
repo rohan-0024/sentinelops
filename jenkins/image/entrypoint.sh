@@ -26,4 +26,6 @@ fi
 
 chown jenkins:jenkins /var/cache/trivy 2>/dev/null || true
 
+# setpriv keeps root's HOME; git/cosign/trivy must use the jenkins home instead.
+export HOME=/var/jenkins_home USER=jenkins LOGNAME=jenkins
 exec setpriv --reuid=jenkins --regid=jenkins --init-groups /usr/local/bin/jenkins.sh "$@"
