@@ -3,7 +3,9 @@
 #   1. replace the default admin/admin password with SONAR_ADMIN_PASSWORD
 #   2. create the "SentinelOps Gate" quality gate (overall code) and make it default
 #   3. register the Jenkins webhook (needed by waitForQualityGate)
-#   4. create a global analysis token for Jenkins and store it in .env as SONAR_TOKEN
+#   4. create a least-privilege "jenkins-ci" user (scan + create projects only) and
+#      a user token for it, stored in .env as SONAR_TOKEN. A user token (not a global
+#      analysis token) is needed so the pipeline can also READ measures for the DRS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENVPY="python3 ${ROOT}/scripts/envfile.py"
@@ -61,16 +63,30 @@ if ! api GET /api/webhooks/list | grep -q "${JENKINS_WEBHOOK}"; then
   api POST /api/webhooks/create --data-urlencode "name=jenkins" --data-urlencode "url=${JENKINS_WEBHOOK}" >/dev/null
 fi
 
-# 4. analysis token for Jenkins
+# 4. least-privilege CI user + token
+CI_USER=jenkins-ci
+if ! api GET /api/users/search --get --data-urlencode "q=${CI_USER}" | grep -q "\"login\":\"${CI_USER}\""; then
+  echo "creating SonarQube user ${CI_USER}"
+  api POST /api/users/create --data-urlencode "login=${CI_USER}" --data-urlencode "name=Jenkins CI" \
+    --data-urlencode "password=$(PYTHONPATH="${ROOT}/scripts" python3 -c 'import envfile; print(envfile.strong_password(24))')" >/dev/null
+fi
+for perm in scan provisioning; do
+  api POST /api/permissions/add_user --data-urlencode "login=${CI_USER}" --data-urlencode "permission=${perm}" >/dev/null
+done
+
 token="$(${ENVPY} get SONAR_TOKEN)"
-if [[ -n "${token}" && "${token}" != "unset" ]] \
-   && authcurl "${token}:" "${SONAR}/api/authentication/validate" | grep -q '"valid":true'; then
-  echo "existing SONAR_TOKEN is valid"
+current_login=""
+if [[ -n "${token}" && "${token}" != "unset" ]]; then
+  current_login="$(authcurl "${token}:" "${SONAR}/api/users/current" 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("login", ""))' 2>/dev/null || true)"
+fi
+if [[ "${current_login}" == "${CI_USER}" ]]; then
+  echo "existing SONAR_TOKEN is a valid ${CI_USER} token"
 else
-  api POST /api/user_tokens/revoke --data-urlencode "name=jenkins" >/dev/null 2>&1 || true
-  token="$(api POST /api/user_tokens/generate --data-urlencode "name=jenkins" \
-            --data-urlencode "type=GLOBAL_ANALYSIS_TOKEN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+  api POST /api/user_tokens/revoke --data-urlencode "login=${CI_USER}" --data-urlencode "name=jenkins" >/dev/null 2>&1 || true
+  token="$(api POST /api/user_tokens/generate --data-urlencode "login=${CI_USER}" --data-urlencode "name=jenkins" \
+            --data-urlencode "type=USER_TOKEN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
   ${ENVPY} set SONAR_TOKEN "${token}"
-  echo "generated SONAR_TOKEN and saved it to .env"
+  echo "generated SONAR_TOKEN for ${CI_USER} and saved it to .env"
 fi
 echo "SonarQube bootstrap complete (gate: ${GATE})"

@@ -96,8 +96,10 @@ pipeline {
                         set +x
                         KEYS=bugs,vulnerabilities,code_smells,coverage,security_hotspots
                         KEYS="$KEYS,duplicated_lines_density,security_rating,reliability_rating"
+                        # Best effort: the DRS treats missing Sonar measures as unknown, not as a failure.
                         printf 'user = "%s:"\n' "$SONAR_AUTH_TOKEN" | curl -fsS -K - -o "$REPORTS/sonar-measures.json" \
-                          "$SONAR_HOST_URL/api/measures/component?component=$SONAR_PROJECT&metricKeys=$KEYS"
+                          "$SONAR_HOST_URL/api/measures/component?component=$SONAR_PROJECT&metricKeys=$KEYS" \
+                          || echo "WARNING: could not read SonarQube measures (DRS will use defaults)"
                     '''
                 }
             }
