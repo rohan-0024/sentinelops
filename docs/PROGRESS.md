@@ -8,7 +8,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 0 Plan & conventions | done | files, `make help` | — |
 | 1 App + tests + Dockerfile + registry | **verified on laptop** | 18 tests, 98.9 % coverage, ruff, checkov Dockerfile 63/63 | done: `make image-test` → SMOKE OK |
 | 2 Terraform | **verified on laptop** (`make verify` incl. tf-check, `make tf-local`) | checkov 203 passed / 0 failed / 28 justified skips; finops handler 8 tests (moto); shellcheck | `make tools && make tf-check && make tf-local`; AWS: `make aws-plan` |
-| 3 Ansible | done | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
+| 3 Ansible | **verified on laptop** (`make ansible-test`: converge, idempotence 0 changed, verify 11/11) | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
 | 4 Jenkins + SonarQube + Trivy | pending | | |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | pending | | |
 | 6 Monitoring | pending | | |
