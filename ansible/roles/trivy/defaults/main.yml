@@ -1,5 +1,5 @@
 ---
-trivy_version: "0.58.1"
+trivy_version: "0.69.3" # last known-good release (see docs/SECURITY-NOTES.md)
 trivy_cache_dir: /var/cache/trivy
 # Pre-download the vulnerability DB so the first pipeline run is fast.
 trivy_download_db: true

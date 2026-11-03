@@ -66,4 +66,4 @@
       ansible.builtin.command: trivy --version
       register: verify_trivy
       changed_when: false
-      failed_when: "'0.58.1' not in verify_trivy.stdout"
+      failed_when: "'0.69.3' not in verify_trivy.stdout"

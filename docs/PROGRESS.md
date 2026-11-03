@@ -44,7 +44,7 @@ yamllint, ansible-lint, moto) are verified here.
 - Molecule converges hardening, docker, node_exporter and trivy in an Ubuntu
   22.04 container, checks idempotence, then verifies (sshd hardening, pinned +
   held docker-ce, node_exporter unit installed and serving metrics on :9100,
-  Trivy 0.58.1). systemd as PID 1 exits immediately under WSL2 + Docker Desktop
+  Trivy 0.69.3). systemd as PID 1 exits immediately under WSL2 + Docker Desktop
   (verified on the owner's laptop: exit 255), so the test container has no
   systemd: services are installed but node_exporter is started directly in
   verify. Firewall, sysctl, nested dockerd and the Trivy DB download are
