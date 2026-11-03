@@ -8,6 +8,10 @@ TF="${ROOT}/terraform"
 AWS_DIR="${TF}/envs/aws"
 REPORTS="${ROOT}/reports"
 mkdir -p "${REPORTS}"
+# Shared provider cache: download each provider once instead of once per directory.
+export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-${HOME}/.terraform.d/plugin-cache}"
+export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true
+mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 
 roots=("${TF}/bootstrap" "${TF}/envs/aws" "${TF}/envs/local")
 modules=("${TF}"/modules/*)
