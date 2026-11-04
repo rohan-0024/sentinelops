@@ -37,9 +37,24 @@ grafana:
     existingSecret: grafana-admin
     userKey: admin-user
     passwordKey: admin-password
+  # Grafana 13 needs ~300-400 MiB at start-up; 256 MiB made it start so slowly that the
+  # liveness probe restarted it in a loop.
   resources:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits: { memory: 256Mi }
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 768Mi }
+  env:
+    # Grafana 12+ downloads "preinstalled" plugins at start-up; skip it (slow/offline-hostile).
+    GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    GF_ANALYTICS_REPORTING_ENABLED: "false"
+    GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+  livenessProbe:
+    httpGet: { path: /api/health, port: 3000 }
+    initialDelaySeconds: 180
+    timeoutSeconds: 10
+    failureThreshold: 10
+  readinessProbe:
+    httpGet: { path: /api/health, port: 3000 }
+    periodSeconds: 10
   sidecar:
     dashboards:
       enabled: true
