@@ -29,6 +29,7 @@ bash scripts/sonar-bootstrap.sh
 
 step "5/6 Jenkins (first build of the image takes several minutes)"
 "${COMPOSE[@]}" up -d --build --wait jenkins
+bash scripts/jenkins-kubeconfig.sh
 
 step "6/6 cluster add-ons (Prometheus, Grafana, Pushgateway, Argo Rollouts, Kyverno, policies)"
 bash scripts/cluster-addons.sh

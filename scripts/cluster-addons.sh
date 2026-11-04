@@ -100,13 +100,9 @@ unstick sentinelops-policies kyverno
 step "load generator"
 sed "s#LOADGEN_IMAGE#${LOADGEN_IMAGE}#" "${ROOT}/k8s/loadgen.yaml" | "${K[@]}" apply -f - >/dev/null
 
-if [[ "${MODE}" == local ]] && docker inspect sentinelops-jenkins >/dev/null 2>&1; then
-  step "kubeconfig for Jenkins (internal API address)"
-  docker exec -u root sentinelops-jenkins mkdir -p /var/jenkins_home/.kube
-  docker cp "${ROOT}/local/secrets/kubeconfig-internal" sentinelops-jenkins:/var/jenkins_home/.kube/config
-  docker exec -u root sentinelops-jenkins sh -c \
-    'chown -R jenkins:jenkins /var/jenkins_home/.kube && chmod 600 /var/jenkins_home/.kube/config'
-  docker exec sentinelops-jenkins kubectl get nodes -o wide | sed 's/^/    /'
+if [[ "${MODE}" == local ]]; then
+  step "kubeconfig for Jenkins"
+  bash "${ROOT}/scripts/jenkins-kubeconfig.sh"
 fi
 
 echo
