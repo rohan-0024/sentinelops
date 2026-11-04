@@ -25,9 +25,16 @@ requireAttestations:
   vulnScan: true
   sbom: true
 
-# in-toto predicate types as Kyverno's ImageValidatingPolicy matches them: WITHOUT the
-# "https://" scheme that cosign writes (cosign stores https://cosign.sigstore.dev/attestation/vuln/v1;
-# Kyverno's docs and policy library use the scheme-less form).
+# Which Kyverno engine verifies the attestations:
+#   legacy  - kyverno.io/v1 ClusterPolicy verifyImages (default). Honours rekor.ignoreTlog
+#             for attestations, which our private-registry signing (--tlog-upload=false) needs.
+#   ivpol   - ImageValidatingPolicy. In Kyverno 1.19.2 its attestation path fails with
+#             "cosign bundle verification failed" when attestations have no Rekor bundle,
+#             even with insecureIgnoreTlog (observed 2026-11-04; signatures verify fine).
+# The image SIGNATURE is always verified by the ImageValidatingPolicy.
+attestationEngine: legacy
+
+# Predicate types exactly as cosign writes them (cosign verify-attestation output).
 attestationTypes:
-  vulnScan: cosign.sigstore.dev/attestation/vuln/v1
-  sbom: cyclonedx.org/bom
+  vulnScan: https://cosign.sigstore.dev/attestation/vuln/v1
+  sbom: https://cyclonedx.org/bom

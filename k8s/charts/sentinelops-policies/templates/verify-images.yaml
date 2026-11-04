@@ -41,6 +41,7 @@ spec:
           insecureIgnoreTlog: true
           insecureIgnoreSCT: true
         {{- end }}
+  {{- if eq .Values.attestationEngine "ivpol" }}
   attestations:
     - name: vulnscan
       intoto:
@@ -48,16 +49,17 @@ spec:
     - name: sbom
       intoto:
         type: {{ .Values.attestationTypes.sbom | quote }}
+  {{- end }}
   validations:
     - expression: >-
         images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
       message: "image is not signed by the SentinelOps Cosign key"
-    {{- if .Values.requireAttestations.vulnScan }}
+    {{- if and (eq .Values.attestationEngine "ivpol") .Values.requireAttestations.vulnScan }}
     - expression: >-
         images.containers.map(image, verifyAttestationSignatures(image, attestations.vulnscan, [attestors.cosign])).all(e, e > 0)
       message: "image has no signed Trivy vulnerability-scan attestation (unscanned image)"
     {{- end }}
-    {{- if .Values.requireAttestations.sbom }}
+    {{- if and (eq .Values.attestationEngine "ivpol") .Values.requireAttestations.sbom }}
     - expression: >-
         images.containers.map(image, verifyAttestationSignatures(image, attestations.sbom, [attestors.cosign])).all(e, e > 0)
       message: "image has no signed CycloneDX SBOM attestation"

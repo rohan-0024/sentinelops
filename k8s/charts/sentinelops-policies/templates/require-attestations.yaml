@@ -1,0 +1,53 @@
+{{- if eq .Values.attestationEngine "legacy" }}
+{{- $key := required "cosignPublicKey is required" .Values.cosignPublicKey -}}
+# Attestation half of Feature 2 (see values.yaml attestationEngine for why this uses the
+# legacy engine): every image in an enforced namespace must carry a Trivy vulnerability-scan
+# attestation and a CycloneDX SBOM attestation, both signed by the SentinelOps Cosign key.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: sentinelops-require-attestations
+  annotations:
+    policies.kyverno.io/title: Require signed vulnerability-scan and SBOM attestations
+    policies.kyverno.io/description: Rejects unscanned images (no signed Trivy scan / SBOM attestation).
+spec:
+  validationFailureAction: {{ if eq .Values.validationAction "Deny" }}Enforce{{ else }}Audit{{ end }}
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Fail
+  rules:
+    - name: require-signed-attestations
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  {{ .Values.enforceNamespaceLabel.key }}: {{ .Values.enforceNamespaceLabel.value | quote }}
+      verifyImages:
+        - imageReferences:
+            - "*"
+          mutateDigest: false
+          verifyDigest: true
+          required: false
+          imageRegistryCredentials:
+            allowInsecureRegistry: {{ .Values.allowInsecureRegistry }}
+          attestations:
+            {{- range $name, $type := dict "vulnScan" .Values.attestationTypes.vulnScan "sbom" .Values.attestationTypes.sbom }}
+            {{- if index $.Values.requireAttestations $name }}
+            - type: {{ $type | quote }}
+              attestors:
+                - entries:
+                    - keys:
+                        publicKeys: |-
+                          {{- $key | trim | nindent 26 }}
+                        {{- if $.Values.ignoreTlog }}
+                        rekor:
+                          url: https://rekor.sigstore.dev
+                          ignoreTlog: true
+                        ctlog:
+                          ignoreSCT: true
+                        {{- end }}
+            {{- end }}
+            {{- end }}
+{{- end }}
