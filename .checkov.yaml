@@ -3,6 +3,9 @@ directory:
   - docker
   - terraform
   - jenkins/image
+  - k8s
+skip-path:
+  - k8s/charts/sentinelops-policies
 framework:
   - dockerfile
   - terraform

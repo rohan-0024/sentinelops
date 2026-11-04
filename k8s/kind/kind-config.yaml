@@ -1,0 +1,34 @@
+# Single-node kind cluster for LOCAL MODE (saves ~1 GB vs control-plane + worker).
+# Node container name: sentinelops-control-plane (Jenkins reaches NodePorts through it).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: sentinelops
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # app (Rollout service)
+      - containerPort: 30080
+        hostPort: 30080
+        listenAddress: "127.0.0.1"
+      # Grafana
+      - containerPort: 30300
+        hostPort: 30300
+        listenAddress: "127.0.0.1"
+      # Prometheus
+      - containerPort: 30090
+        hostPort: 30090
+        listenAddress: "127.0.0.1"
+      # Pushgateway
+      - containerPort: 30091
+        hostPort: 30091
+        listenAddress: "127.0.0.1"
+      # Alertmanager
+      - containerPort: 30093
+        hostPort: 30093
+        listenAddress: "127.0.0.1"
+# Lets containerd read per-registry config from /etc/containerd/certs.d, where
+# scripts/kind-up.sh declares kind-registry:5000 as a plain-HTTP registry.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"

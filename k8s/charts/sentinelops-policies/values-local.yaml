@@ -1,0 +1,2 @@
+allowedRepository: kind-registry:5000/sentinelops-app
+allowInsecureRegistry: true

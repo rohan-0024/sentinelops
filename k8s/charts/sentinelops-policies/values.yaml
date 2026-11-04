@@ -1,0 +1,26 @@
+# Policies apply only to namespaces carrying this label (system namespaces are untouched).
+enforceNamespaceLabel:
+  key: sentinelops.io/enforce
+  value: "true"
+
+# Deny | Audit. Audit logs violations without blocking (useful while debugging).
+validationAction: Deny
+
+# The only registry/repository allowed in enforced namespaces. Images must be pinned by digest.
+# local mode: kind-registry:5000/sentinelops-app   aws mode: <account>.dkr.ecr.<region>.amazonaws.com/sentinelops-app
+allowedRepository: kind-registry:5000/sentinelops-app
+
+# Cosign public key (PEM). Set with: --set-file cosignPublicKey=policy/keys/cosign.pub
+cosignPublicKey: ""
+
+# Local registry is plain HTTP; ECR is HTTPS.
+allowInsecureRegistry: false
+
+# Signatures are created with --tlog-upload=false (private registry, no public Rekor entry),
+# so transparency-log and SCT checks are skipped. The key-pair signature itself is still verified.
+ignoreTlog: true
+
+# Attestations that must be present and signed by the same key.
+requireAttestations:
+  vulnScan: true
+  sbom: true

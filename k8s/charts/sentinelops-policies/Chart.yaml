@@ -1,0 +1,7 @@
+apiVersion: v2
+name: sentinelops-policies
+description: Kyverno admission policies - signed, scanned, digest-pinned images and hardened pods
+type: application
+version: 0.1.0
+appVersion: "kyverno-1.19"
+kubeVersion: ">=1.30.0-0"

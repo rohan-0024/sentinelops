@@ -1,0 +1,58 @@
+# Defaults for both modes. values-local.yaml / values-aws.yaml override per mode.
+
+image:
+  # Always overridden by scripts/deploy.sh with the digest the pipeline pushed and signed.
+  # Must be pinned by digest (tags fail rendering). The all-zero placeholder only lets
+  # linters/scanners render the chart; it fails closed (cannot be pulled, is not signed).
+  ref: "kind-registry:5000/sentinelops-app@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  pullPolicy: IfNotPresent
+
+# 10 replicas make the 10 % / 50 % canary steps exact without a service mesh.
+replicas: 10
+
+env: local
+
+# Fault injection (Feature 3 demo): deploy with --set fault.errorRate=0.5 to watch
+# the analysis fail and Argo Rollouts roll back automatically.
+fault:
+  errorRate: "0"
+  latencyMs: "0"
+
+service:
+  type: ClusterIP
+  port: 80
+  nodePort: null
+
+resources:
+  requests: { cpu: 20m, memory: 48Mi }
+  limits: { cpu: 250m, memory: 128Mi }
+
+canary:
+  # Seconds to hold each weight while the background analysis runs.
+  # scripts/deploy.sh shortens this for low-risk builds (DRS < 30) and lengthens it for 30-60.
+  pauseSeconds: 45
+  steps: [10, 50]
+
+analysis:
+  enabled: true
+  prometheusAddress: http://kps-prometheus.monitoring.svc:9090
+  interval: 20s
+  # Consecutive failed measurements before the rollout aborts (and rolls back).
+  failureLimit: 2
+  # SLOs (also used by the Phase 6 burn-rate alerts)
+  maxErrorRate: "0.05"
+  maxP95LatencySeconds: "0.3"
+
+podMonitor:
+  enabled: true
+  interval: 15s
+
+networkPolicy:
+  enabled: true
+
+podDisruptionBudget:
+  minAvailable: 50%
+
+serviceAccount:
+  # AWS standard accounts: annotate with the IRSA role from terraform output app_irsa_role_arn.
+  annotations: {}

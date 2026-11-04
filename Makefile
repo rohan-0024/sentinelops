@@ -63,11 +63,28 @@ push-local: build registry ## Push the image to the local registry
 
 ##@ Local mode
 COMPOSE := docker compose --env-file .env -f local/docker-compose.yml
-.PHONY: init-env local-up local-down local-clean local-status jenkins-logs sonar-bootstrap cosign-keygen jenkins-image
+.PHONY: cluster-up cluster-addons demo-supply-chain rollout-status rollouts-dashboard helm-lint init-env local-up local-down local-clean local-status jenkins-logs sonar-bootstrap cosign-keygen jenkins-image
 init-env: ## Create .env from .env.example with generated strong passwords
 	@python3 scripts/envfile.py init
 local-up: ## LOCAL MODE: registry + SonarQube + Jenkins (+ kind cluster from phase 5)
 	@bash scripts/local-up.sh
+cluster-up: ## kind cluster + add-ons only (Prometheus, Pushgateway, Argo Rollouts, Kyverno, policies)
+	@bash scripts/kind-up.sh && bash scripts/local-registry.sh up && bash scripts/cluster-addons.sh
+cluster-addons: ## (Re)install cluster add-ons and policies
+	@bash scripts/cluster-addons.sh
+demo-supply-chain: ## Feature 2 proof: unsigned/untrusted/tagged images rejected, signed image admitted
+	@bash scripts/demo-supply-chain.sh
+rollout-status: ## Show the app rollout (canary steps, analysis, revisions)
+	kubectl --context kind-sentinelops argo rollouts get rollout sentinelops-app -n sentinelops
+rollouts-dashboard: ## Argo Rollouts dashboard on http://localhost:3100
+	kubectl --context kind-sentinelops -n argo-rollouts port-forward svc/argo-rollouts-dashboard 3100:3100
+helm-lint: ## helm lint + render both charts
+	helm lint k8s/charts/sentinelops-app -f k8s/charts/sentinelops-app/values-local.yaml
+	helm lint k8s/charts/sentinelops-policies --set-file cosignPublicKey=k8s/charts/sentinelops-policies/ci/test-cosign.pub
+	helm template t k8s/charts/sentinelops-app -f k8s/charts/sentinelops-app/values-aws.yaml > /dev/null
+	@! helm template t k8s/charts/sentinelops-app --set image.ref=kind-registry:5000/sentinelops-app:latest >/dev/null 2>&1 \
+	  || { echo "chart accepted a mutable tag"; exit 1; }
+	@echo "helm-lint: OK (tag-pinned image correctly rejected)"
 local-down: ## Stop the local stack (keeps data volumes)
 	-$(COMPOSE) --profile localstack down
 	-bash scripts/local-registry.sh down
@@ -75,6 +92,7 @@ local-down: ## Stop the local stack (keeps data volumes)
 local-clean: local-down ## Stop everything AND delete local data volumes
 	-$(COMPOSE) --profile localstack down -v
 	-docker volume rm sentinelops-registry
+	-bash scripts/kind-down.sh --delete
 local-status: ## Show local stack status
 	@$(COMPOSE) ps
 	@bash scripts/local-registry.sh status || true
@@ -159,4 +177,6 @@ test-tools: venv ## Unit tests for tools/ (drs, explain, finops, chaos)
 verify: lint ansible-lint test test-tools iac-scan ## All checks that need no cluster/AWS (+ terraform checks if terraform is installed)
 	@if command -v terraform >/dev/null && command -v tflint >/dev/null; then $(MAKE) --no-print-directory tf-check; \
 	  else echo "terraform/tflint not installed - run 'make tools' to include tf-check"; fi
+	@if command -v helm >/dev/null; then $(MAKE) --no-print-directory helm-lint; \
+	  else echo "helm not installed - run 'make tools' to include helm-lint"; fi
 	@echo "verify: OK"

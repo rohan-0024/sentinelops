@@ -1,0 +1,64 @@
+{{- $key := required "cosignPublicKey is required (--set-file cosignPublicKey=policy/keys/cosign.pub)" .Values.cosignPublicKey -}}
+# Feature 2 - zero-trust supply chain: a pod in an enforced namespace is admitted only
+# if every container image (1) carries a valid Cosign signature from our key and
+# (2) has signed attestations for a Trivy vulnerability scan and a CycloneDX SBOM.
+# Unsigned or unscanned images are rejected at admission.
+apiVersion: policies.kyverno.io/v1beta1
+kind: ImageValidatingPolicy
+metadata:
+  name: sentinelops-verify-images
+  annotations:
+    policies.kyverno.io/title: Require signed and scanned images
+    policies.kyverno.io/description: Cosign signature + vulnerability-scan and SBOM attestations (SLSA build provenance groundwork)
+spec:
+  validationActions: [{{ .Values.validationAction }}]
+  failurePolicy: Fail
+  webhookConfiguration:
+    timeoutSeconds: 15
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        {{ .Values.enforceNamespaceLabel.key }}: {{ .Values.enforceNamespaceLabel.value | quote }}
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  # Every image is matched; images outside the allowed repository are rejected by
+  # sentinelops-trusted-registry, so nothing escapes verification.
+  matchImageReferences:
+    - expression: "true"
+  credentials:
+    allowInsecureRegistry: {{ .Values.allowInsecureRegistry }}
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          data: |
+            {{- $key | trim | nindent 12 }}
+        {{- if .Values.ignoreTlog }}
+        ctlog:
+          insecureIgnoreTlog: true
+          insecureIgnoreSCT: true
+        {{- end }}
+  attestations:
+    - name: vulnscan
+      intoto:
+        type: https://cosign.sigstore.dev/attestation/vuln/v1
+    - name: sbom
+      intoto:
+        type: https://cyclonedx.org/bom
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
+      message: "image is not signed by the SentinelOps Cosign key"
+    {{- if .Values.requireAttestations.vulnScan }}
+    - expression: >-
+        images.containers.map(image, verifyAttestationSignatures(image, attestations.vulnscan, [attestors.cosign])).all(e, e > 0)
+      message: "image has no signed Trivy vulnerability-scan attestation (unscanned image)"
+    {{- end }}
+    {{- if .Values.requireAttestations.sbom }}
+    - expression: >-
+        images.containers.map(image, verifyAttestationSignatures(image, attestations.sbom, [attestors.cosign])).all(e, e > 0)
+      message: "image has no signed CycloneDX SBOM attestation"
+    {{- end }}

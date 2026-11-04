@@ -1,0 +1,75 @@
+# Images must come from the trusted repository and be pinned by digest.
+apiVersion: policies.kyverno.io/v1beta1
+kind: ValidatingPolicy
+metadata:
+  name: sentinelops-trusted-registry
+  annotations:
+    policies.kyverno.io/title: Trusted registry, digest-pinned images
+spec:
+  validationActions: [{{ .Values.validationAction }}]
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        {{ .Values.enforceNamespaceLabel.key }}: {{ .Values.enforceNamespaceLabel.value | quote }}
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers +
+        (has(object.spec.initContainers) ? object.spec.initContainers : []) +
+        (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers : [])
+  validations:
+    - expression: >-
+        variables.allContainers.all(c, c.image.startsWith({{ printf "%s@sha256:" .Values.allowedRepository | quote }}))
+      message: {{ printf "images must be %s@sha256:<digest> (trusted registry, pinned by digest; tags such as :latest are not allowed)" .Values.allowedRepository | quote }}
+---
+# Hardened pod baseline (Pod Security "restricted" essentials).
+apiVersion: policies.kyverno.io/v1beta1
+kind: ValidatingPolicy
+metadata:
+  name: sentinelops-pod-security
+  annotations:
+    policies.kyverno.io/title: Non-root, no privilege escalation, read-only root FS, resource limits
+spec:
+  validationActions: [{{ .Values.validationAction }}]
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        {{ .Values.enforceNamespaceLabel.key }}: {{ .Values.enforceNamespaceLabel.value | quote }}
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    - name: podNonRoot
+      expression: >-
+        has(object.spec.securityContext) && has(object.spec.securityContext.runAsNonRoot) &&
+        object.spec.securityContext.runAsNonRoot == true
+  validations:
+    - expression: >-
+        object.spec.containers.all(c, variables.podNonRoot ||
+          (has(c.securityContext) && has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot == true))
+      message: "containers must run as non-root (runAsNonRoot: true)"
+    - expression: >-
+        object.spec.containers.all(c, has(c.securityContext) &&
+          has(c.securityContext.allowPrivilegeEscalation) && c.securityContext.allowPrivilegeEscalation == false)
+      message: "allowPrivilegeEscalation must be false"
+    - expression: >-
+        object.spec.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) ||
+          c.securityContext.privileged == false)
+      message: "privileged containers are not allowed"
+    - expression: >-
+        object.spec.containers.all(c, has(c.securityContext) &&
+          has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem == true)
+      message: "readOnlyRootFilesystem must be true"
+    - expression: >-
+        object.spec.containers.all(c, has(c.resources) && has(c.resources.limits) &&
+          'memory' in c.resources.limits)
+      message: "memory limits are required"

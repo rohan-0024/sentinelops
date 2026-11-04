@@ -1,0 +1,8 @@
+SentinelOps app {{ .Chart.AppVersion }} deployed as an Argo Rollout ({{ .Values.replicas }} replicas).
+Image: {{ .Values.image.ref }}
+
+Watch the canary:
+  kubectl argo rollouts get rollout {{ include "app.name" . }} -n {{ .Release.Namespace }} --watch
+{{- if eq .Values.service.type "NodePort" }}
+App: http://localhost:{{ .Values.service.nodePort }}/health
+{{- end }}

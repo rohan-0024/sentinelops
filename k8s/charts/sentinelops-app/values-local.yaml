@@ -1,0 +1,5 @@
+# LOCAL MODE (kind): NodePort 30080 is mapped to 127.0.0.1:30080 on the laptop.
+env: local
+service:
+  type: NodePort
+  nodePort: 30080

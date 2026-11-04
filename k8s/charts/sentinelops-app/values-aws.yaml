@@ -1,0 +1,6 @@
+# AWS MODE (EKS, 2 x t3.medium): fewer replicas to stay inside the per-node pod
+# limit of the VPC CNI. With 5 replicas the 10 % step rounds up to one pod (20 %).
+env: aws
+replicas: 5
+service:
+  type: ClusterIP

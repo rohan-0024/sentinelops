@@ -1,0 +1,7 @@
+apiVersion: v2
+name: sentinelops-app
+description: SentinelOps sample service deployed as an Argo Rollouts canary with Prometheus-based auto-rollback
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.30.0-0"

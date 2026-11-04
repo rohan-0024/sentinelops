@@ -1,0 +1,72 @@
+# Steady background traffic (~5 req/s) so canary analysis always has data.
+# Runs in its own namespace: the enforced app namespace admits only our signed image.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sentinelops-loadgen
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: sentinelops-loadgen
+  labels: { app: loadgen }
+  annotations:
+    checkov.io/skip1: CKV_K8S_8=Traffic loop has no endpoint to probe; restart policy handles crashes
+    checkov.io/skip2: CKV_K8S_9=No inbound traffic, so readiness is meaningless
+    checkov.io/skip3: CKV_K8S_14=Placeholder replaced at apply time with the pinned LOADGEN_IMAGE tag from versions.env
+    checkov.io/skip4: CKV_K8S_43=Tag pinned in versions.env; the test client is outside the signed-image boundary
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: loadgen }
+  template:
+    metadata:
+      labels: { app: loadgen }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: curl
+          image: LOADGEN_IMAGE
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              URL=http://sentinelops-app.sentinelops.svc/api/items
+              while true; do
+                curl -s -o /dev/null --max-time 2 "$URL" || true
+                sleep 0.2
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 5m, memory: 8Mi }
+            limits: { cpu: 50m, memory: 32Mi }
+---
+# The load generator receives nothing and may only call the app service and DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: loadgen
+  namespace: sentinelops-loadgen
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: sentinelops }
+      ports:
+        - { port: 8000, protocol: TCP }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }

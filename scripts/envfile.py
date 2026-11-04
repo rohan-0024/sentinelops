@@ -71,6 +71,7 @@ def init() -> None:
         "SONAR_ADMIN_PASSWORD",
         "SONAR_DB_PASSWORD",
         "COSIGN_PASSWORD",
+        "GRAFANA_ADMIN_PASSWORD",
     ):
         current = get(key)
         if not current or current.startswith("change-me"):

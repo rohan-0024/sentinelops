@@ -117,6 +117,7 @@ pipeline {
                     sh """
                         checkov ${dirs} --framework terraform,dockerfile,kubernetes,helm \
                           --skip-download --quiet --compact --soft-fail \
+                          --skip-path k8s/charts/sentinelops-policies \
                           -o cli -o json -o junitxml --output-file-path console,${env.REPORTS},${env.REPORTS}
                     """
                 }
