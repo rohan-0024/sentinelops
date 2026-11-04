@@ -23,6 +23,14 @@ esac
 ARGS=(-f "${CHART}/values.yaml" -f "${CHART}/values-${MODE}.yaml" --set "image.ref=${IMAGE}")
 [[ -n "${PAUSE}" ]] && ARGS+=(--set "canary.pauseSeconds=${PAUSE}")
 
+# Preflight: without a kubeconfig, kubectl/helm silently default to http://localhost:8080
+# (inside the Jenkins container that is Jenkins itself). Fail with a clear message instead.
+if ! kubectl version --request-timeout=10s >/dev/null 2>&1; then
+  echo "ERROR: no Kubernetes API reachable (KUBECONFIG=${KUBECONFIG:-unset}, context=$(kubectl config current-context 2>/dev/null || echo none))." >&2
+  echo "       Local mode: run 'make local-up' on the laptop (creates the kind cluster and copies the kubeconfig into Jenkins)." >&2
+  exit 1
+fi
+
 echo "deploying ${IMAGE} (mode=${MODE}, drs=${DRS_SCORE:-n/a}/${DRS_DECISION:-n/a}, pause=${PAUSE:-default})"
 helm upgrade --install "${APP}" "${CHART}" -n "${NS}" "${ARGS[@]}" "$@"
 
