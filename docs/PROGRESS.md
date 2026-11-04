@@ -14,7 +14,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 6 Monitoring | **verified on laptop** (`make verify` green: promtool check 27 rules, promtool unit tests SUCCESS, amtool check-config OK; `make monitoring-check`: 13/13 metrics present, 4 rule groups healthy) | 27 tool tests (rules metadata + runbook links, dashboards up to date / no overlap / valid queries, Alertmanager rendering), groovy lint, shellcheck, yamllint | `make verify` (runs promtool + amtool in Docker), `make cluster-addons`, `make monitoring-check` |
 | 7 Unique features 1–6 | done (7A + 7B) | 81 tool tests (DRS 14, chaos 9, explainer 26, cost report 4, dashboards incl. Command Center coverage), groovy lint | `make verify`, run pipeline: stage 8 DRS + stage 12 chaos |
 | 8 Demo attack mode | done | laptop: demo-attack 6/6 blocked, demo-canary rolled back (error-rate failed 3 > limit 2), demo-fix 5/5 clean |
-| 9 Docs | pending | | |
+| 9 Docs | done (laptop check pending for new provenance + Rego) | 7 Mermaid diagrams render (mmdc); 87 tool tests incl. provenance; shellcheck; yamllint (incl. GitHub workflow) | `make verify` (now runs `policy-test`), Build Now, `make provenance-check` |
 
 ## Why some checks can't run in the build workspace
 The workspace's network allowlist blocks Docker Hub, gcr.io, ghcr.io, quay.io,
@@ -200,3 +200,14 @@ yamllint, ansible-lint, moto) are verified here.
   Kyverno x2, DRS 100 -> block); `make demo-canary` aborted automatically (AnalysisRun 7 ok / 3
   failed, stable kept serving); `make demo-fix` 5/5 PASS. Fixed on the way: Trivy DB download now
   bypasses the WSL Docker credential helper.
+
+## Phase 9 notes
+- Docs: README (badges, architecture), ARCHITECTURE (6 diagrams + decisions), THREAT-MODEL (STRIDE with
+  status per control + residual risks), SLSA (Build L2 in AWS mode / L1 local, L3 roadmap), RUNBOOK
+  (day-2 operations added), VIVA-QA (30), REPORT-OUTLINE, SCREENSHOTS (35 items), TRACEABILITY
+  (slide topics, brief requirements, definition of done, honest "not verified yet" list).
+- Gaps closed while writing them: OPA/Rego guardrails promised in A16 now exist (`policy/rego`, DRS
+  report consistency + Helm values, with Rego unit tests, `make policy-test`, part of `make verify`);
+  SLSA v1 provenance attestation added to stage 10 (`tools/provenance`, 5 tests, `make provenance-check`);
+  A8 corrected (no Chaos Mesh manifests are shipped); GitHub Actions mirror of `make verify` + gitleaks.
+- Rego could not be executed here (no OPA/conftest download, no pip package); it runs on the laptop.

@@ -55,3 +55,44 @@ Fixable CRITICALs already fail the pipeline (Trivy gate). This alert reports unf
 **Alert:** `SentinelOpsChaosRecoverySlow`
 1. Check the chaos stage log (pipeline stage 12) for the experiment and recovery timeline.
 2. Usual causes: slow image pull, readiness probe too strict, too few replicas, or node memory pressure.
+
+---
+
+# Day-2 operations
+
+## start-stop
+| Task | Command |
+|---|---|
+| Start everything (idempotent) | `make local-up` |
+| Status | `make local-status`, `make rollout-status` |
+| Stop, keep data | `make local-down` |
+| Stop and wipe volumes | `make local-clean` (SonarQube must be re-bootstrapped: `make sonar-bootstrap`) |
+| Laptop rebooted, Jenkins cannot reach the cluster | `make jenkins-kubeconfig` |
+
+## demo-reset
+After rehearsals or a failed demo: `make demo-fix` removes the demo clone, branch and image,
+turns fault injection off, redeploys the stable release and re-checks every gate (expect 5 × PASS).
+
+## rotate-cosign-key
+1. Delete the old pair (`rm local/secrets/cosign.key policy/keys/cosign.pub`), then `make cosign-keygen`: the private key goes to `local/secrets/` and `COSIGN_KEY_B64` in `.env`, the public key to `policy/keys/cosign.pub` (commit it).
+2. `make local-up` (reloads Jenkins credentials) and `make policies` (Kyverno gets the new public key).
+3. Run the pipeline: images signed with the old key are rejected on their next rollout, so redeploy.
+
+## secret-leak
+A real credential reached git (gitleaks alert, or found later):
+1. **Revoke/rotate the credential first**; history rewriting does not un-leak it.
+2. Remove it from the code, store it in `.env` / Jenkins credentials / Secrets Manager.
+3. If it must leave history: `git filter-repo --replace-text`, force-push, ask collaborators to re-clone.
+4. Only for false positives: add the fingerprint to `.gitleaksignore` with a comment.
+
+## aws-session
+AWS Academy sessions expire after about 4 hours.
+1. Refresh `~/.aws/credentials` from the Learner Lab "AWS Details" page (never commit or paste them in chat).
+2. `make aws-plan` before anything else; `make aws-destroy` at the end of every session.
+3. Forgot to destroy? The FinOps autopilot scales nodes to 0 and stops Jenkins at 20:00 IST, but the
+   control plane and NAT keep billing until `make aws-destroy`.
+4. Keep it running through the night (rare): `aws ssm put-parameter --overwrite --name /sentinelops/finops/override --value keep-alive`.
+
+## disk-space
+Docker Desktop fills up after many builds: `docker system df`, then `docker image prune -a --filter "until=72h"`
+and `docker builder prune --keep-storage 10GB`. The kind node: `docker exec sentinelops-control-plane crictl rmi --prune`.

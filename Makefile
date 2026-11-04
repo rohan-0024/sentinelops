@@ -87,6 +87,9 @@ demo-branch: ## Phase 8: push demo/vulnerable (vuln dep + root, no secret) for J
 	@bash scripts/demo.sh branch
 demo-fix: ## Phase 8: remove all demo changes, restore the healthy release, re-run the gates
 	@bash scripts/demo.sh fix
+.PHONY: provenance-check
+provenance-check: ## Verify signature + SBOM, vuln-scan and SLSA provenance attestations of the deployed image
+	@bash scripts/provenance-check.sh
 rollout-status: ## Show the app rollout (canary steps, analysis, revisions)
 	kubectl argo rollouts get rollout sentinelops-app -n sentinelops --context kind-sentinelops
 rollouts-dashboard: ## Argo Rollouts dashboard on http://localhost:3100
@@ -197,6 +200,12 @@ lint: venv ## Lint Python, YAML and shell
 	$(PY) -m yamllint -s .
 	@if command -v shellcheck >/dev/null; then shellcheck scripts/*.sh jenkins/image/entrypoint.sh; else echo "shellcheck not installed - skipping (sudo apt install shellcheck)"; fi
 
+.PHONY: policy-test
+policy-test: ## OPA/Rego unit tests (conftest verify) + Helm values guardrails
+	conftest verify --policy policy/rego
+	conftest test --policy policy/rego --namespace helm_values k8s/charts/sentinelops-app/values*.yaml
+	@if [ -f $(REPORTS)/drs.json ]; then conftest test --policy policy/rego --namespace drs $(REPORTS)/drs.json; fi
+
 .PHONY: secrets-scan
 secrets-scan: ## gitleaks scan of the working tree
 	@mkdir -p $(REPORTS)
@@ -220,4 +229,6 @@ verify: lint ansible-lint test test-tools iac-scan ## All checks that need no cl
 	  else echo "docker not available - skipping monitoring-test (promtool/amtool)"; fi
 	@if command -v helm >/dev/null; then $(MAKE) --no-print-directory helm-lint; \
 	  else echo "helm not installed - run 'make tools' to include helm-lint"; fi
+	@if command -v conftest >/dev/null; then $(MAKE) --no-print-directory policy-test; \
+	  else echo "conftest not installed - run 'make tools' to include policy-test"; fi
 	@echo "verify: OK"

@@ -265,7 +265,11 @@ pipeline {
                               --type cyclonedx --predicate "$REPORTS/sbom.cdx.json" "$DEPLOY_IMAGE"
                             cosign attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false $COSIGN_FLAGS \
                               --type vuln --predicate "$REPORTS/trivy-image.cosign-vuln.json" "$DEPLOY_IMAGE"
-                            echo "signed + attested (SBOM, vulnerability scan): $DEPLOY_IMAGE"
+                            # SLSA v1 build provenance (docs/SLSA.md), signed with the same key
+                            python3 -m tools.provenance --image "$DEPLOY_IMAGE" --out "$REPORTS/provenance.json"
+                            cosign attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false $COSIGN_FLAGS \
+                              --type slsaprovenance1 --predicate "$REPORTS/provenance.json" "$DEPLOY_IMAGE"
+                            echo "signed + attested (SBOM, vulnerability scan, SLSA provenance): $DEPLOY_IMAGE"
                         '''
                     }
                 }
