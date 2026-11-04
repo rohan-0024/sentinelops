@@ -24,3 +24,10 @@ ignoreTlog: true
 requireAttestations:
   vulnScan: true
   sbom: true
+
+# in-toto predicate types as Kyverno's ImageValidatingPolicy matches them: WITHOUT the
+# "https://" scheme that cosign writes (cosign stores https://cosign.sigstore.dev/attestation/vuln/v1;
+# Kyverno's docs and policy library use the scheme-less form).
+attestationTypes:
+  vulnScan: cosign.sigstore.dev/attestation/vuln/v1
+  sbom: cyclonedx.org/bom

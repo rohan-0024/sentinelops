@@ -63,7 +63,7 @@ push-local: build registry ## Push the image to the local registry
 
 ##@ Local mode
 COMPOSE := docker compose --env-file .env -f local/docker-compose.yml
-.PHONY: cluster-up jenkins-kubeconfig cluster-addons demo-supply-chain rollout-status rollouts-dashboard helm-lint init-env local-up local-down local-clean local-status jenkins-logs sonar-bootstrap cosign-keygen jenkins-image
+.PHONY: cluster-up jenkins-kubeconfig policies cluster-addons demo-supply-chain rollout-status rollouts-dashboard helm-lint init-env local-up local-down local-clean local-status jenkins-logs sonar-bootstrap cosign-keygen jenkins-image
 init-env: ## Create .env from .env.example with generated strong passwords
 	@python3 scripts/envfile.py init
 local-up: ## LOCAL MODE: registry + SonarQube + Jenkins (+ kind cluster from phase 5)
@@ -72,6 +72,8 @@ cluster-up: ## kind cluster + add-ons only (Prometheus, Pushgateway, Argo Rollou
 	@bash scripts/kind-up.sh && bash scripts/local-registry.sh up && bash scripts/cluster-addons.sh
 jenkins-kubeconfig: ## Give the Jenkins container access to the kind cluster
 	@bash scripts/jenkins-kubeconfig.sh
+policies: ## (Re)install only the Kyverno policies chart (seconds)
+	@bash scripts/policies-apply.sh
 cluster-addons: ## (Re)install cluster add-ons and policies
 	@bash scripts/cluster-addons.sh
 demo-supply-chain: ## Feature 2 proof: unsigned/untrusted/tagged images rejected, signed image admitted

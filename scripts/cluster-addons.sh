@@ -81,21 +81,7 @@ unstick kyverno kyverno
   -f "${ROOT}/k8s/addons/kyverno-values.yaml" --wait --timeout 8m
 
 step "namespaces + sentinelops policies"
-"${K[@]}" create namespace sentinelops --dry-run=client -o yaml | "${K[@]}" apply -f - >/dev/null
-"${K[@]}" label namespace sentinelops sentinelops.io/enforce=true --overwrite >/dev/null
-PUB="${ROOT}/policy/keys/cosign.pub"
-[[ -f "${PUB}" ]] || { echo "missing ${PUB} - run make cosign-keygen" >&2; exit 1; }
-POLICY_VALUES=(-f "${ROOT}/k8s/charts/sentinelops-policies/values.yaml")
-[[ -f "${ROOT}/k8s/charts/sentinelops-policies/values-${MODE}.yaml" ]] \
-  && POLICY_VALUES+=(-f "${ROOT}/k8s/charts/sentinelops-policies/values-${MODE}.yaml")
-if [[ "${MODE}" == aws ]]; then
-  ECR="$(${ENVPY} get ECR_REPOSITORY_URL)"
-  [[ -n "${ECR}" ]] || { echo "ECR_REPOSITORY_URL missing in .env" >&2; exit 1; }
-  POLICY_VALUES+=(--set "allowedRepository=${ECR}")
-fi
-unstick sentinelops-policies kyverno
-"${H[@]}" upgrade --install sentinelops-policies "${ROOT}/k8s/charts/sentinelops-policies" -n kyverno \
-  "${POLICY_VALUES[@]}" --set-file cosignPublicKey="${PUB}" --wait --timeout 3m
+MODE="${MODE}" KUBE_CONTEXT="${CTX}" bash "${ROOT}/scripts/policies-apply.sh"
 
 step "load generator"
 sed "s#LOADGEN_IMAGE#${LOADGEN_IMAGE}#" "${ROOT}/k8s/loadgen.yaml" | "${K[@]}" apply -f - >/dev/null

@@ -44,10 +44,10 @@ spec:
   attestations:
     - name: vulnscan
       intoto:
-        type: https://cosign.sigstore.dev/attestation/vuln/v1
+        type: {{ .Values.attestationTypes.vulnScan | quote }}
     - name: sbom
       intoto:
-        type: https://cyclonedx.org/bom
+        type: {{ .Values.attestationTypes.sbom | quote }}
   validations:
     - expression: >-
         images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
