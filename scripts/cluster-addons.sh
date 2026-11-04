@@ -23,6 +23,24 @@ ENVPY="python3 ${ROOT}/scripts/envfile.py"
 
 step() { printf '\n\033[1;35m--> %s\033[0m\n' "$*"; }
 
+# A release interrupted mid-install (timeout, Ctrl-C, laptop sleep) is left "pending-*"
+# and blocks every later upgrade. Clear it before installing.
+unstick() { # release namespace
+  local status
+  status="$("${H[@]}" status "$1" -n "$2" -o json 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["status"])' 2>/dev/null || true)"
+  case "${status}" in
+    pending-install)
+      echo "release $1 was interrupted during install - removing it so it can be reinstalled"
+      "${H[@]}" uninstall "$1" -n "$2" --wait ;;
+    pending-upgrade | pending-rollback)
+      echo "release $1 was interrupted during ${status#pending-} - rolling back to the last good revision"
+      "${H[@]}" rollback "$1" -n "$2" --wait ;;
+    failed)
+      echo "release $1 is in 'failed' state - the upgrade below will retry it" ;;
+  esac
+}
+
 step "helm repositories"
 "${H[@]}" repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update >/dev/null
 "${H[@]}" repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
@@ -36,24 +54,28 @@ GRAFANA_PW="$(${ENVPY} get GRAFANA_ADMIN_PASSWORD)"
 "${K[@]}" -n monitoring create secret generic grafana-admin \
   --from-literal=admin-user=admin --from-literal=admin-password="${GRAFANA_PW}" \
   --dry-run=client -o yaml | "${K[@]}" apply -f - >/dev/null
+unstick kps monitoring
 "${H[@]}" upgrade --install kps prometheus-community/kube-prometheus-stack \
   --version "${KUBE_PROMETHEUS_STACK_CHART_VERSION}" -n monitoring \
-  -f "${ROOT}/k8s/addons/kube-prometheus-stack-values.yaml" --wait --timeout 12m
+  -f "${ROOT}/k8s/addons/kube-prometheus-stack-values.yaml" --wait --timeout 20m
 if [[ -d "${ROOT}/monitoring" && -x "${ROOT}/scripts/monitoring-apply.sh" ]]; then
   bash "${ROOT}/scripts/monitoring-apply.sh"
 fi
 
 step "monitoring: pushgateway ${PUSHGATEWAY_CHART_VERSION}"
+unstick pushgateway monitoring
 "${H[@]}" upgrade --install pushgateway prometheus-community/prometheus-pushgateway \
   --version "${PUSHGATEWAY_CHART_VERSION}" -n monitoring \
   -f "${ROOT}/k8s/addons/pushgateway-values.yaml" --wait --timeout 5m
 
 step "argo-rollouts ${ARGO_ROLLOUTS_CHART_VERSION}"
+unstick argo-rollouts argo-rollouts
 "${H[@]}" upgrade --install argo-rollouts argo/argo-rollouts \
   --version "${ARGO_ROLLOUTS_CHART_VERSION}" -n argo-rollouts --create-namespace \
   -f "${ROOT}/k8s/addons/argo-rollouts-values.yaml" --wait --timeout 5m
 
 step "kyverno ${KYVERNO_CHART_VERSION}"
+unstick kyverno kyverno
 "${H[@]}" upgrade --install kyverno kyverno/kyverno \
   --version "${KYVERNO_CHART_VERSION}" -n kyverno --create-namespace \
   -f "${ROOT}/k8s/addons/kyverno-values.yaml" --wait --timeout 8m
@@ -71,6 +93,7 @@ if [[ "${MODE}" == aws ]]; then
   [[ -n "${ECR}" ]] || { echo "ECR_REPOSITORY_URL missing in .env" >&2; exit 1; }
   POLICY_VALUES+=(--set "allowedRepository=${ECR}")
 fi
+unstick sentinelops-policies kyverno
 "${H[@]}" upgrade --install sentinelops-policies "${ROOT}/k8s/charts/sentinelops-policies" -n kyverno \
   "${POLICY_VALUES[@]}" --set-file cosignPublicKey="${PUB}" --wait --timeout 3m
 
