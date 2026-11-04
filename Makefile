@@ -79,7 +79,7 @@ cluster-addons: ## (Re)install cluster add-ons and policies
 demo-supply-chain: ## Feature 2 proof: unsigned/untrusted/tagged images rejected, signed image admitted
 	@bash scripts/demo-supply-chain.sh
 rollout-status: ## Show the app rollout (canary steps, analysis, revisions)
-	kubectl --context kind-sentinelops argo rollouts get rollout sentinelops-app -n sentinelops
+	kubectl argo rollouts get rollout sentinelops-app -n sentinelops --context kind-sentinelops
 rollouts-dashboard: ## Argo Rollouts dashboard on http://localhost:3100
 	kubectl --context kind-sentinelops -n argo-rollouts port-forward svc/argo-rollouts-dashboard 3100:3100
 helm-lint: ## helm lint + render both charts
