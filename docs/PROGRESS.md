@@ -10,7 +10,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 2 Terraform | **verified on laptop** (`make verify` incl. tf-check, `make tf-local`) | checkov 203 passed / 0 failed / 28 justified skips; finops handler 8 tests (moto); shellcheck | `make tools && make tf-check && make tf-local`; AWS: `make aws-plan` |
 | 3 Ansible | **verified on laptop** (`make ansible-test`: converge, idempotence 0 changed, verify 11/11) | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
 | 4 Jenkins + SonarQube + Trivy | **verified on laptop** (main build green: stages 1-7, 9, 10, 13; 8/11/12 skipped as designed; quality gate OK, coverage 95.1 %) | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
-| 5 Kubernetes/Helm + Kyverno + Argo Rollouts | done | both charts rendered (Go text/template harness) for local + aws, :latest and missing key correctly rejected; checkov k8s 85/0 + rendered app 3/0; shellcheck; yamllint | `make tools && make local-up`, run pipeline, `make demo-supply-chain` |
+| 5 Kubernetes/Helm + Kyverno + Argo Rollouts | **verified on laptop** (build #18: canary 10/50/100 Healthy, AnalysisRun Successful with 12 measurements; `make demo-supply-chain` 4/4: unsigned, tagged and untrusted images rejected, signed image admitted) | both charts rendered (Go text/template harness) for local + aws, :latest and missing key correctly rejected; checkov k8s 85/0 + rendered app 3/0; shellcheck; yamllint | `make tools && make local-up`, run pipeline, `make demo-supply-chain` |
 | 6 Monitoring | pending | | |
 | 7 Unique features 1–6 | pending | | |
 | 8 `make verify` + attack/fix demo | pending | | |
@@ -110,3 +110,21 @@ yamllint, ansible-lint, moto) are verified here.
   when helm is installed).
 - Checkov has no checks for Argo `Rollout` pod specs; the same controls are
   enforced at admission by `sentinelops-pod-security`.
+
+### Phase 5 fixes found during laptop verification
+1. kube-prometheus-stack timed out on first install (image pulls). Interrupted Helm
+   releases are now detected and recovered automatically (`unstick`), with a 20 min first-install timeout.
+2. Grafana 13 crash-looped under a 256 MiB limit; it now gets 768 MiB, a longer liveness
+   delay, and plugin pre-install disabled. node-exporter's rootfs mount is disabled
+   for kind on Docker Desktop.
+3. Without a kubeconfig, helm in Jenkins defaulted to localhost:8080 (Jenkins itself).
+   The kubeconfig is now copied right after Jenkins starts (`make jenkins-kubeconfig`),
+   and deploy.sh checks the cluster before deploying.
+4. **Kyverno 1.19.2 ImageValidatingPolicy cannot verify attestations that have no Rekor
+   bundle** ("cosign bundle verification failed"), even with insecureIgnoreTlog; its
+   signature checks work. Signatures stay on the ImageValidatingPolicy; vulnerability-scan
+   and SBOM attestations are verified by a kyverno.io/v1 ClusterPolicy (rekor.ignoreTlog).
+   Switchable with `attestationEngine` once Kyverno fixes the CEL path (needed before
+   upgrading to Kyverno 1.20, which removes ClusterPolicy).
+5. The Rollout fails after 5 min instead of 10 when pods cannot be created, and deploy.sh
+   reports admission rejections separately from canary analysis failures.
