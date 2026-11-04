@@ -8,15 +8,21 @@ from tools.explain.redact import redact
 from tools.explain.rules import analyse
 
 
+def fake(*parts: str) -> str:
+    """Builds secret-shaped fixtures at runtime so the source never contains a literal
+    token: gitleaks scans this repository in CI and must stay clean."""
+    return "".join(parts)
+
+
 @pytest.mark.parametrize(
     "secret,label",
     [
-        ("AKIAABCDEFGHIJKLMNOP", "AWS_ACCESS_KEY"),
-        ("sk-ant-api03-abcdefghijklmnop", "ANTHROPIC_KEY"),
-        ("ghp_abcdefghijklmnopqrstuvwxyz123456", "GITHUB_TOKEN"),
-        ("https://hooks.slack.com/services/T000/B000/XXXX", "SLACK_WEBHOOK"),
-        ("squ_0123456789abcdef0123456789abcdef01234567", "SONAR_TOKEN"),
-        ("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl", "JWT"),
+        (fake("AKIA", "ABCDEFGHIJKLMNOP"), "AWS_ACCESS_KEY"),
+        (fake("sk-", "ant-api03-abcdefghijklmnop"), "ANTHROPIC_KEY"),
+        (fake("ghp", "_abcdefghijklmnopqrstuvwxyz123456"), "GITHUB_TOKEN"),
+        (fake("https://hooks.slack", ".com/services/T000/B000/XXXX"), "SLACK_WEBHOOK"),
+        (fake("squ", "_0123456789abcdef0123456789abcdef01234567"), "SONAR_TOKEN"),
+        (fake("eyJ", "hbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl"), "JWT"),
     ],
 )
 def test_redacts_known_token_formats(secret, label):
@@ -26,10 +32,14 @@ def test_redacts_known_token_formats(secret, label):
 
 def test_redacts_private_keys_assignments_url_creds_and_env_values():
     log = (
-        "-----BEGIN EC PRIVATE KEY-----\nabc\n-----END EC PRIVATE KEY-----\n"
-        "password=hunter2-long\n"
-        "git clone https://bob:s3cr3tpw@github.com/x\n"
-        "token: my-env-secret-value\n"
+        fake(
+            "-----BEGIN EC PRIV",
+            "ATE KEY-----\nabc\n-----END EC PRIV",
+            "ATE KEY-----\n",
+        )
+        + fake("pass", "word=hunter2-long\n")
+        + fake("git clone https://bob:", "s3cr3tpw@github.com/x\n")
+        + fake("tok", "en: my-env-secret-value\n")
     )
     out = redact(log, env={"SONAR_TOKEN": "my-env-secret-value"})
     for leaked in ("abc\n-----END", "hunter2-long", "s3cr3tpw", "my-env-secret-value"):
@@ -147,10 +157,12 @@ def test_uses_claude_when_key_set_and_sends_redacted_log(monkeypatch):
 
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
     env = {
-        "ANTHROPIC_API_KEY": "sk-ant-api03-secretkeyvalue",
+        "ANTHROPIC_API_KEY": fake("sk-", "ant-api03-secretkeyvalue"),
         "ANTHROPIC_MODEL": "claude-sonnet-5-5",
     }
-    out = cli.explain("CANARY FAILED\ntoken=abcdefghijkl", "11. Deploy", None, env)
+    out = cli.explain(
+        fake("CANARY FAILED\ntok", "en=abcdefghijkl"), "11. Deploy", None, env
+    )
     assert (
         out["engine"] == "anthropic:claude-sonnet-5-5"
         and "### Root cause\nX" in out["markdown"]
@@ -170,7 +182,7 @@ def test_falls_back_to_rules_when_api_fails(monkeypatch):
         "CHAOS GATE FAILED: slow",
         "12. Smoke",
         None,
-        {"ANTHROPIC_API_KEY": "sk-ant-api03-xxxxxxxxxxxx"},
+        {"ANTHROPIC_API_KEY": fake("sk-", "ant-api03-xxxxxxxxxxxx")},
     )
     assert out["engine"] == "rules" and "network down" in out["api_error"]
     assert "Chaos gate failed" in out["markdown"]
@@ -179,7 +191,7 @@ def test_falls_back_to_rules_when_api_fails(monkeypatch):
 def test_cli_without_key_writes_files(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     log = tmp_path / "build-log.txt"
-    log.write_text("SMOKE FAIL: /health\npassword=supersecret1")
+    log.write_text(fake("SMOKE FAIL: /health\npass", "word=supersecret1"))
     assert (
         cli.main(
             [

@@ -6,6 +6,11 @@ useDefault = true
 
 [allowlist]
 description = "Placeholders and LocalStack dummy credentials (not secrets)"
+# Commit a55adcb added tools/tests/test_explain.py with literal, fake secret-shaped
+# fixtures for the redaction tests (AKIA..., ghp_..., a dummy EC key). They were never real
+# credentials; the file now builds them at runtime. `gitleaks git` scans history, so that
+# single commit is allow-listed explicitly instead of allow-listing the whole tests folder.
+commits = ["a55adcb4e95871325c94488b24685a6ebc4c270a"]
 paths = [
   '''\.env\.example$''',
   '''terraform/envs/local/main\.tf$''',
