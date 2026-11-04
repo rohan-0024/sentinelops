@@ -7,7 +7,9 @@ prometheus:
     type: NodePort
     nodePort: 30090
   prometheusSpec:
-    retention: 2d
+    # 7 days backs the 7-day error budget and DORA windows (see monitoring/SLO.md).
+    retention: 7d
+    retentionSize: 2GB
     scrapeInterval: 15s
     evaluationInterval: 15s
     # Discover ServiceMonitors/PodMonitors/rules from every namespace (app, pushgateway, rollouts).
@@ -23,6 +25,9 @@ alertmanager:
     type: NodePort
     nodePort: 30093
   alertmanagerSpec:
+    # Config rendered from .env by scripts/monitoring-apply.sh (tokens never in git/values).
+    useExistingSecret: true
+    configSecret: alertmanager-sentinelops
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
@@ -60,6 +65,9 @@ grafana:
       enabled: true
       searchNamespace: ALL
       label: grafana_dashboard
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
 
 prometheusOperator:
   resources:

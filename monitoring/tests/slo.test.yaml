@@ -1,0 +1,110 @@
+# promtool unit tests for the SLO rules:  make monitoring-test
+rule_files:
+  - ../prometheus/sentinelops-slo.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  # 50 % of /api requests fail for 90 minutes -> both burn-rate alerts fire, budget is gone.
+  - name: heavy errors trigger fast and slow burn
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="sentinelops",path="/api/items",method="GET",status="200"}'
+        values: '0+60x90'
+      - series: 'http_requests_total{namespace="sentinelops",path="/api/items",method="GET",status="500"}'
+        values: '0+60x90'
+      # probe traffic must not count towards the SLI
+      - series: 'http_requests_total{namespace="sentinelops",path="/health",method="GET",status="200"}'
+        values: '0+600x90'
+      - series: 'up{namespace="sentinelops",job="sentinelops-app"}'
+        values: '1x90'
+    promql_expr_test:
+      - expr: sentinelops:http_errors:ratio_rate5m
+        eval_time: 75m
+        exp_samples:
+          - labels: 'sentinelops:http_errors:ratio_rate5m'
+            value: 0.5
+      - expr: sentinelops:error_budget:remaining_ratio
+        eval_time: 75m
+        exp_samples:
+          - labels: 'sentinelops:error_budget:remaining_ratio'
+            value: 0
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: SentinelOpsErrorBudgetFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: availability
+            exp_annotations:
+              summary: "Error budget burning fast (50% errors)"
+              description: "More than 14.4x the allowed error rate over 1h and 5m. At this rate the 1 % error budget is gone in about 2 days."
+              runbook: docs/RUNBOOK.md#error-budget-burn
+      - eval_time: 75m
+        alertname: SentinelOpsErrorBudgetSlowBurn
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: availability
+            exp_annotations:
+              summary: "Error budget burning steadily (50% errors)"
+              description: "More than 6x the allowed error rate over 6h and 30m."
+              runbook: docs/RUNBOOK.md#error-budget-burn
+      - eval_time: 75m
+        alertname: SentinelOpsAppDown
+        exp_alerts: []
+
+  # Healthy service: no burn alerts, full budget.
+  - name: healthy service stays quiet
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="sentinelops",path="/api/items",method="GET",status="200"}'
+        values: '0+60x90'
+      - series: 'http_requests_total{namespace="sentinelops",path="/api/items",method="GET",status="500"}'
+        values: '0x90'
+      - series: 'up{namespace="sentinelops",job="sentinelops-app"}'
+        values: '1x90'
+    promql_expr_test:
+      - expr: sentinelops:error_budget:remaining_ratio
+        eval_time: 75m
+        exp_samples:
+          - labels: 'sentinelops:error_budget:remaining_ratio'
+            value: 1
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: SentinelOpsErrorBudgetFastBurn
+        exp_alerts: []
+      - eval_time: 75m
+        alertname: SentinelOpsErrorBudgetSlowBurn
+        exp_alerts: []
+
+  # A short spike (5 minutes) must NOT page: the 1h window disagrees.
+  - name: short spike does not page
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="sentinelops",path="/api/items",method="GET",status="200"}'
+        values: '0+60x90'
+      - series: 'http_requests_total{namespace="sentinelops",path="/api/items",method="GET",status="500"}'
+        values: '0x80 0+30x10'
+      - series: 'up{namespace="sentinelops",job="sentinelops-app"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: SentinelOpsErrorBudgetFastBurn
+        exp_alerts: []
+
+  # No pods scraped -> AppDown after 3 minutes.
+  - name: app down
+    interval: 1m
+    input_series:
+      - series: 'up{namespace="sentinelops",job="sentinelops-app"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SentinelOpsAppDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "No sentinelops-app pod is being scraped"
+              description: "All app pods are down or not discovered by Prometheus."
+              runbook: docs/RUNBOOK.md#app-down

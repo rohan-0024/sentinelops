@@ -1,0 +1,91 @@
+# Delivery, supply-chain and DORA rules. Pipeline metrics come from Jenkins via the
+# Pushgateway (job="sentinelops_pipeline"); rollout metrics from the Argo Rollouts
+# controller; admission metrics from Kyverno.
+groups:
+  - name: sentinelops-dora
+    interval: 1m
+    rules:
+      # DORA approximations from pipeline events (see docs/ASSUMPTIONS.md A11).
+      # Every successful deploy writes a new timestamp, so changes() counts deploys.
+      - record: sentinelops:deployments:count7d
+        expr: sum(changes(sentinelops_deploy_timestamp_seconds{job="sentinelops_pipeline"}[7d]))
+      - record: sentinelops:deployments:per_day7d
+        expr: sentinelops:deployments:count7d / 7
+      - record: sentinelops:change_failures:count7d
+        expr: sum(changes(sentinelops_change_failure_timestamp_seconds{job="sentinelops_pipeline"}[7d]))
+      - record: sentinelops:change_failure_rate:ratio7d
+        expr: |
+          sentinelops:change_failures:count7d
+          /
+          clamp_min(sentinelops:deployments:count7d + sentinelops:change_failures:count7d, 1)
+      - record: sentinelops:lead_time_seconds:avg7d
+        expr: avg(avg_over_time(sentinelops_lead_time_seconds{job="sentinelops_pipeline"}[7d]))
+      # Time to restore = last successful deploy after the last change failure.
+      - record: sentinelops:time_to_restore_seconds:last
+        expr: |
+          max(sentinelops_deploy_timestamp_seconds{job="sentinelops_pipeline"})
+          - max(sentinelops_change_failure_timestamp_seconds{job="sentinelops_pipeline"})
+          > 0
+
+  - name: sentinelops-delivery-alerts
+    rules:
+      - alert: SentinelOpsPipelineFailing
+        expr: max by (branch) (sentinelops_build_success{job="sentinelops_pipeline"}) == 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pipeline on {{ $labels.branch }} is red"
+          description: "The latest build of {{ $labels.branch }} failed. See Jenkins and the AI failure explanation artifact."
+          runbook: docs/RUNBOOK.md#pipeline-failure
+      - alert: SentinelOpsCanaryRolledBack
+        # Argo Rollouts marks an aborted rollout Degraded after restoring the stable ReplicaSet.
+        expr: max by (namespace, name) (rollout_info{phase="Degraded"}) == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "Canary for {{ $labels.name }} failed its SLO analysis and was rolled back"
+          description: "Argo Rollouts aborted the rollout and restored the stable version automatically. Production is on the previous release."
+          runbook: docs/RUNBOOK.md#canary-rollback
+      - alert: SentinelOpsCanaryAnalysisFailed
+        expr: |
+          (sum(analysis_run_info{namespace="sentinelops",phase=~"Failed|Error"}) or vector(0))
+          -
+          (sum(analysis_run_info{namespace="sentinelops",phase=~"Failed|Error"} offset 10m) or vector(0))
+          > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A canary analysis run failed in the last 10 minutes"
+          description: "Prometheus-based canary analysis reported Failed/Error."
+          runbook: docs/RUNBOOK.md#canary-rollback
+      - alert: SentinelOpsAdmissionDenied
+        expr: sum(increase(kyverno_admission_requests_total{resource_namespace="sentinelops",request_allowed="false"}[10m])) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "Kyverno denied {{ $value | humanize }} admission request(s) in the sentinelops namespace"
+          description: "An unsigned, unscanned, untrusted or non-compliant workload was blocked. Expected during the attack demo."
+          runbook: docs/RUNBOOK.md#admission-denied
+      - alert: SentinelOpsCriticalVulnerabilities
+        expr: max(sentinelops_vulnerabilities_critical{job="sentinelops_pipeline"}) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "Latest image has {{ $value }} CRITICAL vulnerabilities (none with a fix, or the build was blocked)"
+          description: "Fixable CRITICALs block the pipeline; unfixable ones are reported here and weighted by the DRS."
+          runbook: docs/RUNBOOK.md#vulnerabilities
+      - alert: SentinelOpsPushgatewayDown
+        expr: up{job=~".*pushgateway.*"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pushgateway is down; pipeline metrics (DORA, DRS) are not being collected"
+          runbook: docs/RUNBOOK.md#monitoring
+      - alert: SentinelOpsChaosRecoverySlow
+        expr: max(sentinelops_chaos_recovery_seconds{job="sentinelops_pipeline"}) > 60
+        labels:
+          severity: warning
+        annotations:
+          summary: "Last chaos experiment took {{ $value }}s to recover (limit 60s)"
+          runbook: docs/RUNBOOK.md#chaos

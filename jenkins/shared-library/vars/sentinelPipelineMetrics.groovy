@@ -24,6 +24,12 @@ def call() {
     }
     if (!ok) {
         metrics.sentinelops_failure_timestamp_seconds = now
+        // DORA change failure: the release reached the cluster and then failed
+        // (canary aborted / admission denied in stage 11, smoke or chaos failed in stage 12).
+        String stage = env.CURRENT_STAGE ?: ''
+        if (stage.startsWith('11.') || stage.startsWith('12.')) {
+            metrics.sentinelops_change_failure_timestamp_seconds = now
+        }
     }
     sentinelMetrics(metrics: metrics, labels: [branch: env.BRANCH_NAME ?: 'main', mode: env.MODE ?: 'local'])
 }

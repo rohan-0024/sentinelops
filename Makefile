@@ -154,6 +154,17 @@ ansible-aws: venv ansible-inventory ## Configure the Jenkins EC2 host (needs .en
 jenkins-lint: ## Groovy syntax lint of Jenkinsfile + shared library (needs Node.js + Java 17+)
 	npx --yes npm-groovy-lint@15.0.0 --noserver --failon error --output txt jenkins/Jenkinsfile jenkins/shared-library/vars/
 
+##@ Monitoring
+.PHONY: monitoring monitoring-test monitoring-check dashboards
+monitoring: ## Apply Alertmanager config, Prometheus rules and Grafana dashboards
+	@bash scripts/monitoring-apply.sh
+monitoring-test: venv ## promtool rule unit tests + amtool config check (Docker)
+	@bash scripts/monitoring-test.sh
+monitoring-check: ## Live: metrics present, rules healthy, firing alerts (local Prometheus)
+	@bash scripts/monitoring-check.sh
+dashboards: venv ## Regenerate Grafana dashboard JSON from tools/monitoring/dashboards.py
+	$(PY) -m tools.monitoring.dashboards
+
 ##@ Quality
 .PHONY: lint
 lint: venv ## Lint Python, YAML and shell
@@ -181,6 +192,8 @@ test-tools: venv ## Unit tests for tools/ (drs, explain, finops, chaos)
 verify: lint ansible-lint test test-tools iac-scan ## All checks that need no cluster/AWS (+ terraform checks if terraform is installed)
 	@if command -v terraform >/dev/null && command -v tflint >/dev/null; then $(MAKE) --no-print-directory tf-check; \
 	  else echo "terraform/tflint not installed - run 'make tools' to include tf-check"; fi
+	@if docker info >/dev/null 2>&1; then $(MAKE) --no-print-directory monitoring-test; \
+	  else echo "docker not available - skipping monitoring-test (promtool/amtool)"; fi
 	@if command -v helm >/dev/null; then $(MAKE) --no-print-directory helm-lint; \
 	  else echo "helm not installed - run 'make tools' to include helm-lint"; fi
 	@echo "verify: OK"

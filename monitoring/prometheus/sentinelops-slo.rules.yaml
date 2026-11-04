@@ -1,0 +1,101 @@
+# SLOs for the sentinelops-app API (see monitoring/SLO.md).
+#   Availability SLO: 99 % of /api requests succeed (non-5xx) -> error budget 1 %
+#   Latency SLO:      p95 of /api requests <= 300 ms
+# Burn-rate alerts follow the multi-window, multi-burn-rate pattern from the Google SRE
+# Workbook: a fast burn pages, a slow burn warns.
+groups:
+  - name: sentinelops-sli
+    interval: 30s
+    rules:
+      - record: sentinelops:http_requests:rate5m
+        expr: sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[5m]))
+      - record: sentinelops:http_errors:ratio_rate5m
+        expr: |
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[5m]))
+      - record: sentinelops:http_errors:ratio_rate30m
+        expr: |
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*",status=~"5.."}[30m]))
+          /
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[30m]))
+      - record: sentinelops:http_errors:ratio_rate1h
+        expr: |
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*",status=~"5.."}[1h]))
+          /
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[1h]))
+      - record: sentinelops:http_errors:ratio_rate6h
+        expr: |
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*",status=~"5.."}[6h]))
+          /
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[6h]))
+      - record: sentinelops:http_errors:ratio_rate7d
+        expr: |
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*",status=~"5.."}[7d]))
+          /
+          sum(rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[7d]))
+      - record: sentinelops:http_latency_seconds:p95_5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{namespace="sentinelops",path=~"/api/.*"}[5m])))
+      # Per revision (stable vs canary) - drives the canary panels.
+      - record: sentinelops:http_errors:ratio_rate1m_by_role
+        expr: |
+          sum by (role, rollouts_pod_template_hash) (rate(http_requests_total{namespace="sentinelops",path=~"/api/.*",status=~"5.."}[1m]))
+          /
+          sum by (role, rollouts_pod_template_hash) (rate(http_requests_total{namespace="sentinelops",path=~"/api/.*"}[1m]))
+      # Error budget over the 7-day lab SLO period (Prometheus keeps 7 days locally).
+      - record: sentinelops:error_budget:remaining_ratio
+        expr: clamp_min(1 - (sentinelops:http_errors:ratio_rate7d / 0.01), 0)
+      - record: sentinelops:error_budget:burn_rate1h
+        expr: sentinelops:http_errors:ratio_rate1h / 0.01
+
+  - name: sentinelops-slo-alerts
+    rules:
+      - alert: SentinelOpsErrorBudgetFastBurn
+        # 14.4x burn = 2 % of a 30-day budget gone in one hour. Both windows must agree,
+        # the short one makes the alert reset quickly once the problem is fixed.
+        expr: |
+          sentinelops:http_errors:ratio_rate1h > (14.4 * 0.01)
+          and
+          sentinelops:http_errors:ratio_rate5m > (14.4 * 0.01)
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "Error budget burning fast ({{ $value | humanizePercentage }} errors)"
+          description: "More than 14.4x the allowed error rate over 1h and 5m. At this rate the 1 % error budget is gone in about 2 days."
+          runbook: docs/RUNBOOK.md#error-budget-burn
+      - alert: SentinelOpsErrorBudgetSlowBurn
+        expr: |
+          sentinelops:http_errors:ratio_rate6h > (6 * 0.01)
+          and
+          sentinelops:http_errors:ratio_rate30m > (6 * 0.01)
+        for: 5m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: "Error budget burning steadily ({{ $value | humanizePercentage }} errors)"
+          description: "More than 6x the allowed error rate over 6h and 30m."
+          runbook: docs/RUNBOOK.md#error-budget-burn
+      - alert: SentinelOpsLatencySLOBreach
+        expr: sentinelops:http_latency_seconds:p95_5m > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          slo: latency
+        annotations:
+          summary: "p95 latency {{ $value | humanizeDuration }} is above the 300 ms SLO"
+          description: "95th percentile of /api latency exceeded 300 ms for 5 minutes."
+          runbook: docs/RUNBOOK.md#latency
+      - alert: SentinelOpsAppDown
+        expr: sum(up{namespace="sentinelops"}) == 0 or absent(up{namespace="sentinelops"})
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No sentinelops-app pod is being scraped"
+          description: "All app pods are down or not discovered by Prometheus."
+          runbook: docs/RUNBOOK.md#app-down

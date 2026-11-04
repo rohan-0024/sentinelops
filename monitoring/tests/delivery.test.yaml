@@ -1,0 +1,77 @@
+# promtool unit tests for delivery / DORA rules:  make monitoring-test
+rule_files:
+  - ../prometheus/sentinelops-delivery.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: DORA recording rules from pipeline events
+    interval: 1m
+    input_series:
+      # deploys at t=100s, 200s, 300s (three successful deploys) then a change failure at 250s
+      - series: 'sentinelops_deploy_timestamp_seconds{job="sentinelops_pipeline",branch="main"}'
+        values: '100 100 200 200 300 300 300 300 300 300'
+      - series: 'sentinelops_change_failure_timestamp_seconds{job="sentinelops_pipeline",branch="main"}'
+        values: '_ _ _ 250 250 250 250 250 250 250'
+      - series: 'sentinelops_lead_time_seconds{job="sentinelops_pipeline",branch="main"}'
+        values: '600x9'
+    promql_expr_test:
+      - expr: sentinelops:deployments:count7d
+        eval_time: 9m
+        exp_samples:
+          - labels: 'sentinelops:deployments:count7d'
+            value: 2
+      - expr: sentinelops:change_failures:count7d
+        eval_time: 9m
+        exp_samples:
+          - labels: 'sentinelops:change_failures:count7d'
+            value: 0
+      - expr: sentinelops:time_to_restore_seconds:last
+        eval_time: 9m
+        exp_samples:
+          - labels: 'sentinelops:time_to_restore_seconds:last'
+            value: 50
+      - expr: sentinelops:lead_time_seconds:avg7d
+        eval_time: 9m
+        exp_samples:
+          - labels: 'sentinelops:lead_time_seconds:avg7d'
+            value: 600
+
+  - name: red pipeline and canary rollback alert
+    interval: 1m
+    input_series:
+      - series: 'sentinelops_build_success{job="sentinelops_pipeline",branch="main"}'
+        values: '1 1 0 0 0'
+      - series: 'rollout_info{namespace="sentinelops",name="sentinelops-app",phase="Degraded"}'
+        values: '1x4'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SentinelOpsPipelineFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              branch: main
+            exp_annotations:
+              summary: "Pipeline on main is red"
+              description: "The latest build of main failed. See Jenkins and the AI failure explanation artifact."
+              runbook: docs/RUNBOOK.md#pipeline-failure
+      - eval_time: 3m
+        alertname: SentinelOpsCanaryRolledBack
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: sentinelops
+              name: sentinelops-app
+            exp_annotations:
+              summary: "Canary for sentinelops-app failed its SLO analysis and was rolled back"
+              description: "Argo Rollouts aborted the rollout and restored the stable version automatically. Production is on the previous release."
+              runbook: docs/RUNBOOK.md#canary-rollback
+
+  - name: green pipeline is quiet
+    interval: 1m
+    input_series:
+      - series: 'sentinelops_build_success{job="sentinelops_pipeline",branch="main"}'
+        values: '1x5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: SentinelOpsPipelineFailing
+        exp_alerts: []

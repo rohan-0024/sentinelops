@@ -55,12 +55,12 @@ GRAFANA_PW="$(${ENVPY} get GRAFANA_ADMIN_PASSWORD)"
   --from-literal=admin-user=admin --from-literal=admin-password="${GRAFANA_PW}" \
   --dry-run=client -o yaml | "${K[@]}" apply -f - >/dev/null
 unstick kps monitoring
+# Alertmanager reads its config from this Secret, so it must exist before the install.
+MODE="${MODE}" KUBE_CONTEXT="${CTX}" bash "${ROOT}/scripts/monitoring-apply.sh" alertmanager
 "${H[@]}" upgrade --install kps prometheus-community/kube-prometheus-stack \
   --version "${KUBE_PROMETHEUS_STACK_CHART_VERSION}" -n monitoring \
   -f "${ROOT}/k8s/addons/kube-prometheus-stack-values.yaml" --wait --timeout 20m
-if [[ -d "${ROOT}/monitoring" && -x "${ROOT}/scripts/monitoring-apply.sh" ]]; then
-  bash "${ROOT}/scripts/monitoring-apply.sh"
-fi
+MODE="${MODE}" KUBE_CONTEXT="${CTX}" bash "${ROOT}/scripts/monitoring-apply.sh" rules dashboards
 
 step "monitoring: pushgateway ${PUSHGATEWAY_CHART_VERSION}"
 unstick pushgateway monitoring
