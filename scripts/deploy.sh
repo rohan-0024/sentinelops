@@ -38,8 +38,15 @@ if ! kubectl argo rollouts status "${APP}" -n "${NS}" --timeout 15m; then
   echo
   kubectl argo rollouts get rollout "${APP}" -n "${NS}" || true
   echo
-  echo "CANARY FAILED: SLO analysis did not pass. Argo Rollouts aborted the rollout and"
-  echo "restored the stable version automatically (no human action)."
+  denied="$(kubectl get events -n "${NS}" --field-selector reason=FailedCreate \
+    -o jsonpath='{range .items[*]}{.message}{"\n"}{end}' 2>/dev/null | grep -i "admission webhook" | tail -n 3 || true)"
+  if [[ -n "${denied}" ]]; then
+    echo "DEPLOY BLOCKED BY ADMISSION POLICY (Kyverno) - pods were never created:"
+    printf '  %s\n' "${denied}"
+  else
+    echo "CANARY FAILED: SLO analysis did not pass. Argo Rollouts aborted the rollout and"
+    echo "restored the stable version automatically (no human action)."
+  fi
   exit 1
 fi
 kubectl argo rollouts get rollout "${APP}" -n "${NS}" | head -n 25
