@@ -88,6 +88,18 @@ admission() { # image uid -> prints first denial line, returns kubectl rc
   return ${rc}
 }
 
+trivy_fs() { # report dir
+  # Anonymous pull of the public vulnerability DB: on WSL2 the Docker Desktop credential
+  # helper (credsStore desktop.exe) in ~/.docker/config.json can time out ("error getting
+  # credentials"), which makes Trivy's DB download fail. An empty config avoids the helper.
+  local cfg rc=0
+  cfg="$(mktemp -d)"
+  echo '{}' >"${cfg}/config.json"
+  DOCKER_CONFIG="${cfg}" trivy fs --quiet --scanners vuln --format json --output "$1" "$2" || rc=$?
+  rm -rf "${cfg}"
+  return ${rc}
+}
+
 gitleaks_scan() { # repo report -> rc (1 = leaks)
   local rc
   set +e
@@ -151,7 +163,7 @@ attack() {
   fi
 
   step "2/5 vulnerable dependency (${VULN_DEP}) -> Trivy gate (stage 6)"
-  trivy fs --quiet --scanners vuln --format json --output "${R}/trivy-fs.json" "${W}/app"
+  trivy_fs "${R}/trivy-fs.json" "${W}/app"
   local crit
   mapfile -t crit < <(fixable_criticals "${R}/trivy-fs.json")
   if ((crit[0] > 0)); then
@@ -282,7 +294,7 @@ fix() {
   else
     record FAIL "Repository history" "gitleaks" "LEAKS" "see ${OUT}/gitleaks.json"
   fi
-  trivy fs --quiet --scanners vuln --format json --output "${OUT}/trivy-fs.json" "${ROOT}/app"
+  trivy_fs "${OUT}/trivy-fs.json" "${ROOT}/app"
   local crit
   mapfile -t crit < <(fixable_criticals "${OUT}/trivy-fs.json")
   if ((crit[0] == 0)); then
