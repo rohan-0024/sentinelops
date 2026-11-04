@@ -11,7 +11,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 3 Ansible | **verified on laptop** (`make ansible-test`: converge, idempotence 0 changed, verify 11/11) | ansible-lint production profile 0 failures (38 files), yamllint, syntax-check | `make ansible-test` (Molecule); AWS: `make ansible-aws` |
 | 4 Jenkins + SonarQube + Trivy | **verified on laptop** (main build green: stages 1-7, 9, 10, 13; 8/11/12 skipped as designed; quality gate OK, coverage 95.1 %) | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | **verified on laptop** (build #18: canary 10/50/100 Healthy, AnalysisRun Successful with 12 measurements; `make demo-supply-chain` 4/4: unsigned, tagged and untrusted images rejected, signed image admitted) | both charts rendered (Go text/template harness) for local + aws, :latest and missing key correctly rejected; checkov k8s 85/0 + rendered app 3/0; shellcheck; yamllint | `make tools && make local-up`, run pipeline, `make demo-supply-chain` |
-| 6 Monitoring | done | 27 tool tests (rules metadata + runbook links, dashboards up to date / no overlap / valid queries, Alertmanager rendering), groovy lint, shellcheck, yamllint | `make verify` (runs promtool + amtool in Docker), `make cluster-addons`, `make monitoring-check` |
+| 6 Monitoring | **verified on laptop** (`make verify` green: promtool check 27 rules, promtool unit tests SUCCESS, amtool check-config OK; `make monitoring-check`: 13/13 metrics present, 4 rule groups healthy) | 27 tool tests (rules metadata + runbook links, dashboards up to date / no overlap / valid queries, Alertmanager rendering), groovy lint, shellcheck, yamllint | `make verify` (runs promtool + amtool in Docker), `make cluster-addons`, `make monitoring-check` |
 | 7 Unique features 1–6 | pending | | |
 | 8 `make verify` + attack/fix demo | pending | | |
 | 9 Docs | pending | | |
@@ -143,3 +143,12 @@ yamllint, ansible-lint, moto) are verified here.
   Feature 7 (Command Center) extends this in Phase 7.
 - promtool/amtool cannot be downloaded in the build workspace; every promtool test case
   was traced by hand here and runs for real on the laptop via `make monitoring-test`.
+
+### Phase 6 fixes found during laptop verification
+1. checkov renders Helm charts in namespace `default` (CKV_K8S_21); the chart now sets
+   `namespaceOverride: sentinelops`.
+2. monitoring-check's inline Python used escaped quotes inside f-strings; moved to a heredoc.
+3. amtool runs as `nobody` and could not read the private temp dir; it is now made readable
+   (it only holds dummy tokens and is deleted on exit).
+4. A one-off Docker Desktop credential-helper timeout in WSL (`accept4 failed 110`) was fixed
+   by retrying the pull.
