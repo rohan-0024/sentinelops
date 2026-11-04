@@ -204,6 +204,22 @@ def _drs_details(reports: Path) -> list[str]:
     ]
 
 
+SKIP_MARKER = "skipped due to earlier failure"
+NOISE = re.compile(r"^\s*(\[[^\]]*\]\s*)?(\[Pipeline\]|Post stage|$)")
+SIGNALS = re.compile(r"error|fail|exception|exit code|killed|timed? ?out", re.I)
+
+
+def _failing_stage_tail(log: str, limit: int = 6) -> list[str]:
+    """Evidence for unmatched failures: error-like lines, ignoring the 'skipped due to
+    earlier failure' lines Jenkins prints for later stages; otherwise the last real
+    output of the stage that failed (everything before the first skip marker)."""
+    lines = log.splitlines()
+    cut = next((i for i, ln in enumerate(lines) if SKIP_MARKER in ln), len(lines))
+    body = [ln.strip() for ln in lines[:cut] if not NOISE.match(ln)]
+    hits = [ln for ln in body if SIGNALS.search(ln)]
+    return (hits or body)[-limit:]
+
+
 def analyse(log: str, stage: str = "", reports: Path | None = None) -> list[Finding]:
     findings: list[Finding] = []
     for rule in RULES:
@@ -215,11 +231,7 @@ def analyse(log: str, stage: str = "", reports: Path | None = None) -> list[Find
                 ev += _drs_details(reports)
             findings.append(Finding(rule.id, rule.title, rule.cause, rule.fix, ev))
     if not findings:
-        tail = [
-            ln
-            for ln in log.splitlines()
-            if re.search(r"error|fail|exception", ln, re.I)
-        ][-5:]
+        tail = _failing_stage_tail(log)
         findings.append(
             Finding(
                 GENERIC.rule,

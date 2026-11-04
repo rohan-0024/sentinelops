@@ -219,3 +219,19 @@ def test_cli_tolerates_missing_log(tmp_path, monkeypatch):
         json.loads((tmp_path / "explain.json").read_text())["findings"][0]["rule"]
         == "generic"
     )
+
+
+def test_generic_evidence_skips_jenkins_skip_lines_and_shows_failing_stage_output():
+    log = (
+        "[Pipeline] { (11. Deploy (Helm canary))\n"
+        "Progressing - more replicas need to be updated\n"
+        "Healthy\n"
+        "|  |-- sentinelops-app-abc  Pod  Running\n"
+        "[Pipeline] }\n"
+        'Stage "12. Smoke & Chaos Test" skipped due to earlier failure(s)\n'
+        'Stage "13. Publish Metrics & Notify" skipped due to earlier failure(s)\n'
+    )
+    (f,) = analyse(log, "11. Deploy (Helm canary)")
+    assert f.rule == "generic"
+    assert not any("skipped due to" in e for e in f.evidence)
+    assert f.evidence[-1].endswith("Running") and "Healthy" in f.evidence

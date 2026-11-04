@@ -49,5 +49,8 @@ if ! kubectl argo rollouts status "${APP}" -n "${NS}" --timeout 15m; then
   fi
   exit 1
 fi
-kubectl argo rollouts get rollout "${APP}" -n "${NS}" | head -n 25
+# Capture first: piping into `head` under pipefail kills kubectl with SIGPIPE (exit 141)
+# once the tree (10 replicas + history) is longer than the lines head keeps.
+status="$(kubectl argo rollouts get rollout "${APP}" -n "${NS}")"
+sed -n '1,25p' <<<"${status}"
 echo "rollout healthy: ${IMAGE}"
