@@ -57,6 +57,10 @@ kube-state-metrics:
     limits: { memory: 128Mi }
 
 prometheus-node-exporter:
+  # kind on Docker Desktop (WSL2): the host root FS is not a shared mount, so the
+  # default rootfs mount with HostToContainer propagation makes node-exporter crash-loop.
+  hostRootFsMount:
+    enabled: false
   resources:
     requests: { cpu: 10m, memory: 24Mi }
     limits: { memory: 64Mi }
