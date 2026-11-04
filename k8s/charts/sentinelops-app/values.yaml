@@ -1,5 +1,8 @@
 # Defaults for both modes. values-local.yaml / values-aws.yaml override per mode.
 
+# Target namespace (also used when rendering outside `helm -n`, e.g. by checkov).
+namespaceOverride: sentinelops
+
 image:
   # Always overridden by scripts/deploy.sh with the digest the pipeline pushed and signed.
   # Must be pinned by digest (tags fail rendering). The all-zero placeholder only lets

@@ -7,7 +7,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
   name: {{ include "app.name" . }}-slo
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "app.namespace" . }}
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
@@ -22,9 +22,9 @@ spec:
         prometheus:
           address: {{ .Values.analysis.prometheusAddress }}
           query: |
-            sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}",rollouts_pod_template_hash="{{ "{{" }}args.canary-hash{{ "}}" }}",status=~"5.."}[1m]))
+            sum(rate(http_requests_total{namespace="{{ include "app.namespace" . }}",rollouts_pod_template_hash="{{ "{{" }}args.canary-hash{{ "}}" }}",status=~"5.."}[1m]))
             /
-            sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}",rollouts_pod_template_hash="{{ "{{" }}args.canary-hash{{ "}}" }}"}[1m]))
+            sum(rate(http_requests_total{namespace="{{ include "app.namespace" . }}",rollouts_pod_template_hash="{{ "{{" }}args.canary-hash{{ "}}" }}"}[1m]))
     - name: p95-latency
       interval: {{ .Values.analysis.interval }}
       failureLimit: {{ .Values.analysis.failureLimit }}
@@ -33,5 +33,5 @@ spec:
         prometheus:
           address: {{ .Values.analysis.prometheusAddress }}
           query: |
-            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="{{ .Release.Namespace }}",rollouts_pod_template_hash="{{ "{{" }}args.canary-hash{{ "}}" }}"}[1m])))
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="{{ include "app.namespace" . }}",rollouts_pod_template_hash="{{ "{{" }}args.canary-hash{{ "}}" }}"}[1m])))
 {{- end }}

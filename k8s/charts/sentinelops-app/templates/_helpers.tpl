@@ -21,3 +21,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- $ref -}}
 {{- end -}}
+
+{{/* Namespace is explicit (not "default") so rendered manifests and scanners agree. */}}
+{{- define "app.namespace" -}}{{ .Values.namespaceOverride | default .Release.Namespace }}{{- end -}}

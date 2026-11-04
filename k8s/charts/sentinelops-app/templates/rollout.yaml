@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: {{ include "app.name" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "app.namespace" . }}
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:

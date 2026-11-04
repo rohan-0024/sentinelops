@@ -3,33 +3,44 @@
 # rules and dashboards use actually present, and are the SentinelOps rules loaded?
 set -euo pipefail
 PROM="${PROM_URL:-http://localhost:30090}"
-PY=python3
+TMP="$(mktemp -d)"
+trap 'rm -rf "${TMP}"' EXIT
+curl -fsS "${PROM}/api/v1/label/__name__/values" -o "${TMP}/names.json"
+curl -fsS "${PROM}/api/v1/rules" -o "${TMP}/rules.json"
+curl -fsS "${PROM}/api/v1/alerts" -o "${TMP}/alerts.json"
 
-names="$(curl -fsS "${PROM}/api/v1/label/__name__/values")"
-echo "== metrics used by rules/dashboards"
-for m in http_requests_total http_request_duration_seconds_bucket up \
-         rollout_info analysis_run_info kyverno_admission_requests_total \
-         kube_pod_status_ready kube_pod_container_status_restarts_total \
-         node_cpu_seconds_total container_memory_working_set_bytes \
-         sentinelops_build_success sentinelops_vulnerabilities_critical sentinelops_deploy_timestamp_seconds; do
-  if "${PY}" -c 'import json,sys; sys.exit(0 if sys.argv[1] in json.load(sys.stdin)["data"] else 1)' "${m}" <<<"${names}"; then
-    printf '  present  %s\n' "${m}"
-  else
-    printf '  MISSING  %s\n' "${m}"
-  fi
-done
+python3 - "${TMP}" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-echo "== SentinelOps rule groups"
-curl -fsS "${PROM}/api/v1/rules" | "${PY}" -c '
-import json, sys
-groups = [g for f in [json.load(sys.stdin)["data"]["groups"]] for g in f if g["name"].startswith("sentinelops")]
+d = Path(sys.argv[1])
+names = set(json.loads((d / "names.json").read_text())["data"])
+wanted = [
+    "http_requests_total", "http_request_duration_seconds_bucket", "up",
+    "rollout_info", "analysis_run_info", "kyverno_admission_requests_total",
+    "kube_pod_status_ready", "kube_pod_container_status_restarts_total",
+    "node_cpu_seconds_total", "container_memory_working_set_bytes",
+    "sentinelops_build_success", "sentinelops_vulnerabilities_critical",
+    "sentinelops_deploy_timestamp_seconds",
+]
+print("== metrics used by rules/dashboards")
+for m in wanted:
+    print(f"  {'present' if m in names else 'MISSING'}  {m}")
+
+print("== SentinelOps rule groups")
+groups = [g for g in json.loads((d / "rules.json").read_text())["data"]["groups"] if g["name"].startswith("sentinelops")]
 for g in groups:
     bad = [r["name"] for r in g["rules"] if r.get("health") != "ok"]
-    print(f"  {g[\"name\"]:<32} {len(g[\"rules\"]):>2} rules  health: {\"ok\" if not bad else \"BAD \" + \", \".join(bad)}")
-print(f"  {len(groups)} groups loaded")'
+    status = "ok" if not bad else "BAD " + ", ".join(bad)
+    print(f"  {g['name']:<32} {len(g['rules']):>2} rules  health: {status}")
+print(f"  {len(groups)} groups loaded")
 
-echo "== firing SentinelOps alerts"
-curl -fsS "${PROM}/api/v1/alerts" | "${PY}" -c '
-import json, sys
-a = [x for x in json.load(sys.stdin)["data"]["alerts"] if x["labels"]["alertname"].startswith("SentinelOps")]
-print("\n".join(f"  {x[\"state\"]:<8} {x[\"labels\"][\"alertname\"]} ({x[\"labels\"].get(\"severity\")})" for x in a) or "  none")'
+print("== SentinelOps alerts (pending/firing)")
+alerts = [a for a in json.loads((d / "alerts.json").read_text())["data"]["alerts"]
+          if a["labels"]["alertname"].startswith("SentinelOps")]
+for a in alerts:
+    print(f"  {a['state']:<8} {a['labels']['alertname']} ({a['labels'].get('severity')})")
+if not alerts:
+    print("  none")
+PY
