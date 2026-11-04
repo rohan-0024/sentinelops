@@ -113,6 +113,22 @@ pipeline {
                     if (fileExists('k8s')) {
                         dirs += ' -d k8s'
                     }
+                    // Feature 6: cost estimate of the AWS Terraform (optional; free Infracost key).
+                    withCredentials([string(credentialsId: 'infracost-api-key', variable: 'INFRACOST_API_KEY')]) {
+                        sh '''
+                            set +x
+                            if [ "$INFRACOST_API_KEY" = "unset" ]; then
+                              echo "Infracost: no API key configured - cost estimate skipped"; exit 0
+                            fi
+                            infracost breakdown --path terraform/envs/aws \
+                              --terraform-var 'admin_cidrs=["203.0.113.10/32"]' \
+                              --format json --out-file "$REPORTS/infracost.json" \
+                              && infracost output --path "$REPORTS/infracost.json" --format table \
+                              && python3 -m tools.finops.cost_report --infracost "$REPORTS/infracost.json" \
+                                   --out "$REPORTS/cost-report.md" \
+                              || echo "Infracost estimate failed (not a gate)"
+                        '''
+                    }
                     // Soft-fail: findings are weighted by the Deployment Risk Score instead of hard-blocking.
                     sh """
                         checkov ${dirs} --framework terraform,dockerfile,kubernetes,helm \
@@ -294,17 +310,9 @@ pipeline {
         }
         failure {
             script {
-                if (fileExists('tools/explain/__main__.py')) {
-                    withCredentials([string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_API_KEY')]) {
-                        sh(returnStatus: true, script: '''
-                            [ "$ANTHROPIC_API_KEY" = "unset" ] && unset ANTHROPIC_API_KEY
-                            python3 -m tools.explain --build-url "$BUILD_URL" --stage "$CURRENT_STAGE" --out "$REPORTS"
-                        ''')
-                    }
-                    archiveArtifacts(artifacts: 'reports/explain.*', allowEmptyArchive: true)
-                }
+                String why = fileExists('tools/explain/__main__.py') ? sentinelExplain() : ''
+                sentinelNotify(status: 'FAILURE', text: why ? "Why: ${why} (see explain.md)" : '')
             }
-            sentinelNotify(status: 'FAILURE')
         }
     }
 }

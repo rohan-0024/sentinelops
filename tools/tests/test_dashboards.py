@@ -49,6 +49,33 @@ def test_panels_do_not_overlap_and_fit_grid():
                     cells.add((x, y))
 
 
+def by_uid(uid):
+    return next(compile_dashboard(d) for d in dashboards() if d.uid == uid)
+
+
+def test_command_center_covers_every_feature7_signal():
+    exprs = " ".join(
+        t["expr"]
+        for p in by_uid("sentinelops-command-center")["panels"]
+        for t in p.get("targets", [])
+    )
+    required = {
+        "DORA deploy frequency": "deployments:per_day7d",
+        "DORA lead time": "lead_time_seconds",
+        "DORA change failure rate": "change_failure_rate",
+        "DORA MTTR": "time_to_restore_seconds",
+        "DRS trend": "sentinelops_drs_score",
+        "vulnerabilities by severity": "sentinelops_vulnerabilities_critical",
+        "canary status": "rollout_info",
+        "chaos recovery time": "sentinelops_chaos_recovery_seconds",
+        "SLO / error budget": "error_budget:remaining_ratio",
+        "node health (node-exporter)": "node_cpu_seconds_total",
+        "kube-state-metrics": "kube_pod_status_ready",
+    }
+    missing = [k for k, needle in required.items() if needle not in exprs]
+    assert not missing, missing
+
+
 def test_slo_dashboard_covers_required_signals():
     exprs = " ".join(
         t["expr"]

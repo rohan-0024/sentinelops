@@ -155,7 +155,15 @@ jenkins-lint: ## Groovy syntax lint of Jenkinsfile + shared library (needs Node.
 	npx --yes npm-groovy-lint@15.0.0 --noserver --failon error --output txt jenkins/Jenkinsfile jenkins/shared-library/vars/
 
 ##@ Unique features
-.PHONY: drs chaos
+.PHONY: drs chaos cost-report explain
+cost-report: venv ## Infracost estimate of the AWS Terraform + autopilot projection (needs INFRACOST_API_KEY)
+	@mkdir -p $(REPORTS)
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	infracost breakdown --path terraform/envs/aws --terraform-var 'admin_cidrs=["203.0.113.10/32"]' \
+	  --format json --out-file $(REPORTS)/infracost.json
+	$(PY) -m tools.finops.cost_report --infracost $(REPORTS)/infracost.json --out $(REPORTS)/cost-report.md
+explain: venv ## Run the failure explainer on reports/build-log.txt
+	$(PY) -m tools.explain --log reports/build-log.txt --out reports
 drs: venv ## Deployment Risk Score over ./reports (copy a build's reports there first)
 	$(PY) -m tools.drs --reports reports --config policy/risk.yaml --out reports
 chaos: venv ## Chaos gate against the local cluster (pod-kill + CPU stress, recovery time)

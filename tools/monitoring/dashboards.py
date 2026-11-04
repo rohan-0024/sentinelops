@@ -546,7 +546,262 @@ def dashboards() -> list[Dashboard]:
             ),
         ],
     )
-    return [slo, delivery, cluster]
+    command_center = Dashboard(
+        uid="sentinelops-command-center",
+        title="SentinelOps · DevSecOps Command Center",
+        description="Feature 7: one screen for delivery speed (DORA), release risk (DRS), supply-chain security, "
+        "progressive delivery, resilience (chaos), reliability (SLO) and cluster health.",
+        time_from="now-24h",
+        rows=[
+            Row(
+                "Delivery performance (DORA, 7d)",
+                [
+                    Panel(
+                        "Deploys / day",
+                        "stat",
+                        [("sentinelops:deployments:per_day7d", "")],
+                        w=4,
+                        decimals=2,
+                    ),
+                    Panel(
+                        "Lead time (avg)",
+                        "stat",
+                        [("sentinelops:lead_time_seconds:avg7d", "")],
+                        w=4,
+                        unit="s",
+                    ),
+                    Panel(
+                        "Change failure rate",
+                        "stat",
+                        [("sentinelops:change_failure_rate:ratio7d", "")],
+                        w=4,
+                        unit="percentunit",
+                        thresholds=[(None, "green"), (0.15, "orange"), (0.3, "red")],
+                    ),
+                    Panel(
+                        "Time to restore",
+                        "stat",
+                        [("sentinelops:time_to_restore_seconds:last", "")],
+                        w=4,
+                        unit="s",
+                    ),
+                    Panel(
+                        "Last build (main)",
+                        "stat",
+                        [
+                            (
+                                f'max(sentinelops_build_success{{{PIPE},branch="main"}})',
+                                "",
+                            )
+                        ],
+                        w=4,
+                        thresholds=[(None, "red"), (1, "green")],
+                    ),
+                    Panel(
+                        "Last DRS",
+                        "stat",
+                        [(f"max(sentinelops_drs_score{{{PIPE}}})", "")],
+                        w=4,
+                        min=0,
+                        max=100,
+                        thresholds=[(None, "green"), (30, "orange"), (60, "red")],
+                    ),
+                ],
+            ),
+            Row(
+                "Release risk and supply chain",
+                [
+                    Panel(
+                        "Deployment Risk Score trend",
+                        "timeseries",
+                        [
+                            (
+                                f"max by (branch) (sentinelops_drs_score{{{PIPE}}})",
+                                "{{branch}}",
+                            )
+                        ],
+                        w=8,
+                        h=8,
+                        min=0,
+                        max=100,
+                        thresholds=[(None, "green"), (30, "orange"), (60, "red")],
+                    ),
+                    Panel(
+                        "Vulnerabilities by severity",
+                        "timeseries",
+                        [
+                            (
+                                f"max(sentinelops_vulnerabilities_critical{{{PIPE}}})",
+                                "critical",
+                            ),
+                            (
+                                f"max(sentinelops_vulnerabilities_high{{{PIPE}}})",
+                                "high",
+                            ),
+                            (
+                                f"max(sentinelops_vulnerabilities_medium{{{PIPE}}})",
+                                "medium",
+                            ),
+                        ],
+                        w=8,
+                        h=8,
+                    ),
+                    Panel(
+                        "Admission decisions (Kyverno)",
+                        "timeseries",
+                        [
+                            (
+                                'sum by (request_allowed) (increase(kyverno_admission_requests_total{resource_namespace="sentinelops"}[5m]))',
+                                "allowed={{request_allowed}}",
+                            ),
+                        ],
+                        w=8,
+                        h=8,
+                    ),
+                ],
+            ),
+            Row(
+                "Progressive delivery and resilience",
+                [
+                    Panel(
+                        "Canary status",
+                        "table",
+                        [("max by (name, phase) (rollout_info{" + NS + "})", "")],
+                        w=6,
+                        h=7,
+                    ),
+                    Panel(
+                        "Canary vs stable error ratio",
+                        "timeseries",
+                        [("sentinelops:http_errors:ratio_rate1m_by_role", "{{role}}")],
+                        w=6,
+                        h=7,
+                        unit="percentunit",
+                    ),
+                    Panel(
+                        "Chaos recovery time",
+                        "timeseries",
+                        [
+                            (
+                                f"max(sentinelops_chaos_recovery_seconds{{{PIPE}}})",
+                                "recovery",
+                            )
+                        ],
+                        w=6,
+                        h=7,
+                        unit="s",
+                        thresholds=[(None, "green"), (60, "red")],
+                        description="Feature 4 gate: must be <= 60 s.",
+                    ),
+                    Panel(
+                        "Last chaos gate",
+                        "stat",
+                        [(f"max(sentinelops_chaos_passed{{{PIPE}}})", "")],
+                        w=6,
+                        h=7,
+                        thresholds=[(None, "red"), (1, "green")],
+                        description="1 = passed, 0 = failed.",
+                    ),
+                ],
+            ),
+            Row(
+                "Reliability (SLO)",
+                [
+                    Panel(
+                        "Availability (5m)",
+                        "stat",
+                        [("1 - sentinelops:http_errors:ratio_rate5m", "")],
+                        w=6,
+                        unit="percentunit",
+                        decimals=2,
+                        thresholds=[(None, "red"), (0.99, "green")],
+                    ),
+                    Panel(
+                        "p95 latency",
+                        "stat",
+                        [("sentinelops:http_latency_seconds:p95_5m", "")],
+                        w=6,
+                        unit="s",
+                        decimals=3,
+                        thresholds=[(None, "green"), (0.3, "red")],
+                    ),
+                    Panel(
+                        "Error budget remaining",
+                        "gauge",
+                        [("sentinelops:error_budget:remaining_ratio", "")],
+                        w=6,
+                        unit="percentunit",
+                        min=0,
+                        max=1,
+                        thresholds=[(None, "red"), (0.25, "orange"), (0.5, "green")],
+                    ),
+                    Panel(
+                        "Burn rate (1h)",
+                        "stat",
+                        [("sentinelops:error_budget:burn_rate1h", "")],
+                        w=6,
+                        unit="x",
+                        decimals=1,
+                        thresholds=[(None, "green"), (6, "orange"), (14.4, "red")],
+                    ),
+                ],
+            ),
+            Row(
+                "Cluster health",
+                [
+                    Panel(
+                        "Node CPU busy",
+                        "gauge",
+                        [
+                            (
+                                '1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))',
+                                "",
+                            )
+                        ],
+                        w=6,
+                        unit="percentunit",
+                        min=0,
+                        max=1,
+                        thresholds=[(None, "green"), (0.7, "orange"), (0.9, "red")],
+                    ),
+                    Panel(
+                        "Node memory used",
+                        "gauge",
+                        [
+                            (
+                                "1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)",
+                                "",
+                            )
+                        ],
+                        w=6,
+                        unit="percentunit",
+                        min=0,
+                        max=1,
+                        thresholds=[(None, "green"), (0.75, "orange"), (0.9, "red")],
+                    ),
+                    Panel(
+                        "Ready app pods",
+                        "stat",
+                        [(f'sum(kube_pod_status_ready{{{NS},condition="true"}})', "")],
+                        w=6,
+                    ),
+                    Panel(
+                        "Pods not ready (cluster)",
+                        "stat",
+                        [
+                            (
+                                'sum(kube_pod_status_ready{condition="false"}) or vector(0)',
+                                "",
+                            )
+                        ],
+                        w=6,
+                        thresholds=[(None, "green"), (1, "red")],
+                    ),
+                ],
+            ),
+        ],
+    )
+    return [slo, delivery, cluster, command_center]
 
 
 def render_all() -> dict[str, str]:

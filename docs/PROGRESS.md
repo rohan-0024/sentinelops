@@ -12,7 +12,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 4 Jenkins + SonarQube + Trivy | **verified on laptop** (main build green: stages 1-7, 9, 10, 13; 8/11/12 skipped as designed; quality gate OK, coverage 95.1 %) | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | **verified on laptop** (build #18: canary 10/50/100 Healthy, AnalysisRun Successful with 12 measurements; `make demo-supply-chain` 4/4: unsigned, tagged and untrusted images rejected, signed image admitted) | both charts rendered (Go text/template harness) for local + aws, :latest and missing key correctly rejected; checkov k8s 85/0 + rendered app 3/0; shellcheck; yamllint | `make tools && make local-up`, run pipeline, `make demo-supply-chain` |
 | 6 Monitoring | **verified on laptop** (`make verify` green: promtool check 27 rules, promtool unit tests SUCCESS, amtool check-config OK; `make monitoring-check`: 13/13 metrics present, 4 rule groups healthy) | 27 tool tests (rules metadata + runbook links, dashboards up to date / no overlap / valid queries, Alertmanager rendering), groovy lint, shellcheck, yamllint | `make verify` (runs promtool + amtool in Docker), `make cluster-addons`, `make monitoring-check` |
-| 7 Unique features 1–6 | in progress (7A: DRS + chaos gate done) | DRS 14 tests, chaos 9 tests, groovy lint | `make verify`, run pipeline: stage 8 DRS + stage 12 chaos |
+| 7 Unique features 1–6 | done (7A + 7B) | 81 tool tests (DRS 14, chaos 9, explainer 26, cost report 4, dashboards incl. Command Center coverage), groovy lint | `make verify`, run pipeline: stage 8 DRS + stage 12 chaos |
 | 8 `make verify` + attack/fix demo | pending | | |
 | 9 Docs | pending | | |
 
@@ -165,3 +165,19 @@ yamllint, ansible-lint, moto) are verified here.
   pods for 20 s, probes /api/items throughout; passes if recovery <= 60 s and probe success
   >= 95 %. Pushes sentinelops_chaos_recovery_seconds (Grafana + SentinelOpsChaosRecoverySlow).
   kubectl-based engine (ASSUMPTIONS A8); the hog pods reuse the pinned load-generator image.
+
+## Phase 7B notes
+- **Feature 5 - AI Failure Explainer** (`tools/explain`, shared-library step `sentinelExplain`):
+  on any failed build the trusted library step captures the last 400 log lines, the tool
+  redacts secrets (known token formats, private keys, URL credentials, key=value assignments
+  and the literal values of secret env vars), then asks Claude (`ANTHROPIC_MODEL`, default
+  claude-sonnet-5-5) for root cause / fix / evidence. Without a key, or if the API call fails,
+  a rule engine covering every pipeline failure mode answers instead. Output: explain.md /
+  explain.json artifacts and a one-line "Why:" in the Telegram/Slack notification.
+- **Feature 6 - FinOps reporting**: Infracost runs in stage 4 when a key is configured;
+  `tools/finops/cost_report.py` splits schedulable vs always-on cost and projects the
+  autopilot saving. `docs/COST-REPORT.md` documents the model, list prices and controls.
+- **Feature 7 - DevSecOps Command Center** (`sentinelops-command-center` dashboard): DORA,
+  DRS trend, vulnerabilities, Kyverno decisions, canary status, canary-vs-stable errors,
+  chaos recovery time and result, SLO/error budget/burn rate, node and pod health. A test
+  asserts every signal required by the brief is present.
