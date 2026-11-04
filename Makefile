@@ -154,6 +154,13 @@ ansible-aws: venv ansible-inventory ## Configure the Jenkins EC2 host (needs .en
 jenkins-lint: ## Groovy syntax lint of Jenkinsfile + shared library (needs Node.js + Java 17+)
 	npx --yes npm-groovy-lint@15.0.0 --noserver --failon error --output txt jenkins/Jenkinsfile jenkins/shared-library/vars/
 
+##@ Unique features
+.PHONY: drs chaos
+drs: venv ## Deployment Risk Score over ./reports (copy a build's reports there first)
+	$(PY) -m tools.drs --reports reports --config policy/risk.yaml --out reports
+chaos: venv ## Chaos gate against the local cluster (pod-kill + CPU stress, recovery time)
+	cd $(ROOT) && $(PY) -m tools.chaos --url http://localhost:30080 --context kind-sentinelops --stress-image $(LOADGEN_IMAGE)
+
 ##@ Monitoring
 .PHONY: monitoring monitoring-test monitoring-check dashboards
 monitoring: ## Apply Alertmanager config, Prometheus rules and Grafana dashboards

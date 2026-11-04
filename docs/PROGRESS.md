@@ -12,7 +12,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 4 Jenkins + SonarQube + Trivy | **verified on laptop** (main build green: stages 1-7, 9, 10, 13; 8/11/12 skipped as designed; quality gate OK, coverage 95.1 %) | Groovy parse (npm-groovy-lint, 0 errors), checkov Jenkins Dockerfile, shellcheck, yamllint, ansible-lint, compose config, envfile tests | `make local-up`, then run the SentinelOps job |
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | **verified on laptop** (build #18: canary 10/50/100 Healthy, AnalysisRun Successful with 12 measurements; `make demo-supply-chain` 4/4: unsigned, tagged and untrusted images rejected, signed image admitted) | both charts rendered (Go text/template harness) for local + aws, :latest and missing key correctly rejected; checkov k8s 85/0 + rendered app 3/0; shellcheck; yamllint | `make tools && make local-up`, run pipeline, `make demo-supply-chain` |
 | 6 Monitoring | **verified on laptop** (`make verify` green: promtool check 27 rules, promtool unit tests SUCCESS, amtool check-config OK; `make monitoring-check`: 13/13 metrics present, 4 rule groups healthy) | 27 tool tests (rules metadata + runbook links, dashboards up to date / no overlap / valid queries, Alertmanager rendering), groovy lint, shellcheck, yamllint | `make verify` (runs promtool + amtool in Docker), `make cluster-addons`, `make monitoring-check` |
-| 7 Unique features 1–6 | pending | | |
+| 7 Unique features 1–6 | in progress (7A: DRS + chaos gate done) | DRS 14 tests, chaos 9 tests, groovy lint | `make verify`, run pipeline: stage 8 DRS + stage 12 chaos |
 | 8 `make verify` + attack/fix demo | pending | | |
 | 9 Docs | pending | | |
 
@@ -152,3 +152,16 @@ yamllint, ansible-lint, moto) are verified here.
    (it only holds dummy tokens and is deleted on exit).
 4. A one-off Docker Desktop credential-helper timeout in WSL (`accept4 failed 110`) was fixed
    by retrying the pull.
+
+## Phase 7A notes
+- **Feature 1 - Deployment Risk Score** (`tools/drs`, `policy/risk.yaml`): parses Trivy
+  (image + fs, deduplicated, fixable vs unfixable), gitleaks, checkov, Sonar measures and
+  coverage; score = min(100, sum of capped weighted factors) + explicit penalties for missing
+  reports. < 30 auto (15 s canary pauses), 30-60 canary (60 s pauses), > 60 blocked; any
+  leaked secret scores 100. Writes drs.json / drs.md / drs.prom; the score is pushed to the
+  Pushgateway and shown on the build description.
+- **Feature 4 - Chaos gate** (`tools/chaos`, pipeline stage 12 after the smoke test):
+  deletes 30 % of app pods, measures time until all replicas are Ready again, runs 2 CPU-hog
+  pods for 20 s, probes /api/items throughout; passes if recovery <= 60 s and probe success
+  >= 95 %. Pushes sentinelops_chaos_recovery_seconds (Grafana + SentinelOpsChaosRecoverySlow).
+  kubectl-based engine (ASSUMPTIONS A8); the hog pods reuse the pinned load-generator image.

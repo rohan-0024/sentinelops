@@ -173,14 +173,16 @@ pipeline {
             when { expression { fileExists('tools/drs/__main__.py') } }
             steps {
                 markStage()
-                sh 'python3 -m tools.drs --reports "$REPORTS" --config policy/risk.yaml --out "$REPORTS"'
                 script {
+                    // exit code 3 = "block"; read the report either way so the reason is visible
+                    sh(returnStatus: true, script: 'python3 -m tools.drs --reports "$REPORTS" --config policy/risk.yaml --out "$REPORTS"')
                     def drs = readJSON(file: 'reports/drs.json')
                     env.DRS_SCORE = drs.score.toString()
                     env.DRS_DECISION = drs.decision
+                    currentBuild.description = "DRS ${drs.score} (${drs.decision})"
                     echo "Deployment Risk Score: ${drs.score} -> ${drs.decision}"
                     if (drs.decision == 'block') {
-                        error("Deployment blocked by DRS (${drs.score} > threshold)")
+                        error("Deployment blocked by the Deployment Risk Score (${drs.score} > ${drs.thresholds.block})")
                     }
                 }
             }
