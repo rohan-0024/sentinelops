@@ -22,6 +22,8 @@ docker run --rm -v "${ROOT}/monitoring:/m:ro" -w /m/tests --entrypoint promtool 
 echo "== amtool check-config (with dummy Telegram + Slack so every integration is validated)"
 (cd "${ROOT}" && TELEGRAM_BOT_TOKEN=1:x TELEGRAM_CHAT_ID=1 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T/B/X \
   "${PY}" -m tools.monitoring.alertmanager) > "${TMP}/alertmanager.yaml"
+# The alertmanager image runs as "nobody": make the (dummy-token) config readable to it.
+chmod 755 "${TMP}"
 chmod 644 "${TMP}/alertmanager.yaml"
 docker run --rm -v "${TMP}:/c:ro" --entrypoint amtool "${ALERTMANAGER_IMAGE}" check-config /c/alertmanager.yaml
 echo "monitoring-test: OK"
