@@ -181,3 +181,8 @@ yamllint, ansible-lint, moto) are verified here.
   DRS trend, vulnerabilities, Kyverno decisions, canary status, canary-vs-stable errors,
   chaos recovery time and result, SLO/error budget/burn rate, node and pod health. A test
   asserts every signal required by the brief is present.
+- **Verified on the laptop (build #28, fcaf4cb): all 13 stages green.** gitleaks clean (34 commits),
+  Sonar gate OK, checkov 0 failed, DRS 54.0 -> canary, signed + attested, canary 10/50/100 with
+  analysis passing, smoke OK, chaos gate passed (3/10 pods killed, recovered in 9.7 s, 149 probes
+  at 100 % success, p95 10 ms under CPU stress). Builds #24-#27 surfaced three real bugs, all fixed:
+  fake secrets in test fixtures (gitleaks), SIGPIPE in deploy.sh, checkov report paths.
