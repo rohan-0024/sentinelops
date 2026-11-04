@@ -4,28 +4,30 @@
 # DRS runs; the DRS weighs the residual risk that is allowed through those gates.
 version: 1
 
+# score < auto            -> deploy, short canary pauses
+# auto <= score <= block  -> deploy with long canary pauses + extra analysis
+# score > block           -> blocked
 thresholds:
-  auto: 30     # score < 30        -> deploy, short canary pauses
-  block: 60    # 30 <= score <= 60 -> deploy with long canary pauses + extra analysis
-               # score > 60        -> blocked
+  auto: 30
+  block: 60
 
 factors:
   # Trivy (image + app dependencies). Fixable findings weigh more: there is an upgrade path.
-  vuln_critical_unfixed:   { weight: 8.0, cap: 24, source: trivy, help: "CRITICAL CVEs with no fixed version" }
-  vuln_high_fixable:       { weight: 3.0, cap: 24, source: trivy, help: "HIGH CVEs that have a fixed version" }
-  vuln_high_unfixed:       { weight: 1.0, cap: 10, source: trivy, help: "HIGH CVEs with no fixed version" }
-  vuln_medium:             { weight: 0.2, cap: 4,  source: trivy, help: "MEDIUM CVEs" }
+  vuln_critical_unfixed: { weight: 8.0, cap: 24, source: trivy, help: "CRITICAL CVEs with no fixed version" }
+  vuln_high_fixable: { weight: 3.0, cap: 24, source: trivy, help: "HIGH CVEs that have a fixed version" }
+  vuln_high_unfixed: { weight: 1.0, cap: 10, source: trivy, help: "HIGH CVEs with no fixed version" }
+  vuln_medium: { weight: 0.2, cap: 4, source: trivy, help: "MEDIUM CVEs" }
   # gitleaks (normally blocks earlier; counted for completeness)
-  secrets:                 { weight: 100, cap: 100, source: gitleaks, help: "Leaked secrets (any secret blocks)" }
+  secrets: { weight: 100, cap: 100, source: gitleaks, help: "Leaked secrets (any secret blocks)" }
   # checkov (soft-fail stage): failed IaC/Dockerfile/K8s checks
-  iac_failed_checks:       { weight: 2.0, cap: 20, source: checkov, help: "Failed checkov checks" }
+  iac_failed_checks: { weight: 2.0, cap: 20, source: checkov, help: "Failed checkov checks" }
   # SonarQube measures
-  sonar_vulnerabilities:   { weight: 10,  cap: 30, source: sonar, help: "Sonar vulnerabilities" }
-  sonar_bugs:              { weight: 3.0, cap: 15, source: sonar, help: "Sonar bugs" }
+  sonar_vulnerabilities: { weight: 10, cap: 30, source: sonar, help: "Sonar vulnerabilities" }
+  sonar_bugs: { weight: 3.0, cap: 15, source: sonar, help: "Sonar bugs" }
   sonar_security_hotspots: { weight: 2.0, cap: 10, source: sonar, help: "Unreviewed security hotspots" }
-  sonar_code_smells:       { weight: 0.1, cap: 5,  source: sonar, help: "Code smells" }
+  sonar_code_smells: { weight: 0.1, cap: 5, source: sonar, help: "Code smells" }
   # Coverage below target: 0.5 point per missing percentage point
-  coverage_gap:            { weight: 0.5, cap: 20, source: coverage, target: 80, help: "Percentage points below 80 % coverage" }
+  coverage_gap: { weight: 0.5, cap: 20, source: coverage, target: 80, help: "Percentage points below 80 % coverage" }
 
 # A missing report is unknown risk, not zero risk.
 missing_input_penalty:
