@@ -13,7 +13,7 @@ the owner in WSL2 (command given) · **aws** = needs AWS Academy credentials.
 | 5 Kubernetes/Helm + Kyverno + Argo Rollouts | **verified on laptop** (build #18: canary 10/50/100 Healthy, AnalysisRun Successful with 12 measurements; `make demo-supply-chain` 4/4: unsigned, tagged and untrusted images rejected, signed image admitted) | both charts rendered (Go text/template harness) for local + aws, :latest and missing key correctly rejected; checkov k8s 85/0 + rendered app 3/0; shellcheck; yamllint | `make tools && make local-up`, run pipeline, `make demo-supply-chain` |
 | 6 Monitoring | **verified on laptop** (`make verify` green: promtool check 27 rules, promtool unit tests SUCCESS, amtool check-config OK; `make monitoring-check`: 13/13 metrics present, 4 rule groups healthy) | 27 tool tests (rules metadata + runbook links, dashboards up to date / no overlap / valid queries, Alertmanager rendering), groovy lint, shellcheck, yamllint | `make verify` (runs promtool + amtool in Docker), `make cluster-addons`, `make monitoring-check` |
 | 7 Unique features 1–6 | done (7A + 7B) | 81 tool tests (DRS 14, chaos 9, explainer 26, cost report 4, dashboards incl. Command Center coverage), groovy lint | `make verify`, run pipeline: stage 8 DRS + stage 12 chaos |
-| 8 `make verify` + attack/fix demo | pending | | |
+| 8 Demo attack mode | built (laptop run pending) | `scripts/demo.sh` stub-tested here (attack/fix flows, scoreboard), shellcheck |
 | 9 Docs | pending | | |
 
 ## Why some checks can't run in the build workspace
@@ -186,3 +186,13 @@ yamllint, ansible-lint, moto) are verified here.
   analysis passing, smoke OK, chaos gate passed (3/10 pods killed, recovered in 9.7 s, 149 probes
   at 100 % success, p95 10 ms under CPU stress). Builds #24-#27 surfaced three real bugs, all fixed:
   fake secrets in test fixtures (gitleaks), SIGPIPE in deploy.sh, checkov report paths.
+
+## Phase 8 notes
+- `make demo-attack`: throw-away clone on branch `demo/vulnerable` (never pushed) with a hardcoded
+  AWS key, `django==3.2.0`, `USER root`; plus an unsigned image pushed to the trusted registry.
+  Real gates: gitleaks, Trivy fixable-CRITICAL rule, checkov CKV_DOCKER_8, Kyverno pod-security and
+  verifyImages (server-side dry-run), DRS. Scoreboard: `reports/demo/scoreboard.md`.
+- `make demo-canary`: signed release with `fault.errorRate=0.5` -> analysis fails -> auto-rollback.
+- `make demo-branch`: pushes `demo/vulnerable` without the secret (gitleaks scans all fetched refs)
+  so Jenkins visibly blocks it at stage 6. `make demo-fix` deletes it and re-proves the baseline.
+- Script: `docs/DEMO.md` (10-minute run sheet, failure recovery, screenshot list).

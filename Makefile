@@ -78,6 +78,15 @@ cluster-addons: ## (Re)install cluster add-ons and policies
 	@bash scripts/cluster-addons.sh
 demo-supply-chain: ## Feature 2 proof: unsigned/untrusted/tagged images rejected, signed image admitted
 	@bash scripts/demo-supply-chain.sh
+.PHONY: demo-attack demo-canary demo-branch demo-fix
+demo-attack: ## Phase 8: run the attacker's change set against every gate (all must BLOCK)
+	@bash scripts/demo.sh attack
+demo-canary: ## Phase 8: signed but faulty release -> canary analysis fails -> auto-rollback
+	@bash scripts/demo.sh canary
+demo-branch: ## Phase 8: push demo/vulnerable (vuln dep + root, no secret) for Jenkins to block
+	@bash scripts/demo.sh branch
+demo-fix: ## Phase 8: remove all demo changes, restore the healthy release, re-run the gates
+	@bash scripts/demo.sh fix
 rollout-status: ## Show the app rollout (canary steps, analysis, revisions)
 	kubectl argo rollouts get rollout sentinelops-app -n sentinelops --context kind-sentinelops
 rollouts-dashboard: ## Argo Rollouts dashboard on http://localhost:3100

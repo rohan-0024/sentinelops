@@ -51,3 +51,6 @@ Thumbs.db
 .idea/
 terraform/modules/*/.build/
 terraform/envs/aws/backend.hcl
+
+# Phase 8 demo workspace (throw-away clone with fake secrets)
+.demo/
